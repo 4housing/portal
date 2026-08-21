@@ -19,7 +19,8 @@
     { path: '/4housing-comercial/',   nombre: 'Comercial 4housing',  sector: 'fhcomercial' },
     { path: '/labo-comercial/',       nombre: 'Comercial LABO',      sector: 'labocomercial' },
     { path: '/diseno-4housing/',      nombre: 'Diseño',              sector: 'diseno' },
-    { path: '/planificacion-taller/', nombre: 'Planificación',       sector: 'planificacion' }
+    { path: '/planificacion-taller/', nombre: 'Planificación',       sector: 'planificacion' },
+    { path: '/4housing-compras/',     nombre: 'Compras y Operaciones', sector: 'compras' }
   ];
 
   // No mostrar el link de la app en la que ya estamos
