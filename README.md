@@ -22,7 +22,7 @@ valida, su proyecto viejo se pausa — lo que además libera cupo free.
 
 Prefijos de tabla por sector — mismos strings que el enum `sector_portal`:
 
-`fhcomercial_` · `labocomercial_` · `diseno_` (sin ñ) · `planificacion_` · `compras_` · `logistica_`
+`fhcomercial_` · `labocomercial_` · `diseno_` (sin ñ) · `planificacion_` · `compras_` · `eerr_` · `logistica_`
 
 - `core_` queda **reservado** para las tablas maestras compartidas de Etapa 2
   (`core_clientes`, `core_proyectos`). No crear todavía.
