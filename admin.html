@@ -72,14 +72,14 @@
 const SUPABASE_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjcGtwd3hocWRjZGxqZnd6Y215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDM4NDAsImV4cCI6MjA5NjYxOTg0MH0.MSTk46VAwdAsn5qNBdrHmGIiLYyN-rAyAZC72xZW3D4';
 
-const SECTORES = ['fhcomercial','labocomercial','diseno','planificacion','compras','logistica'];
-const SECTOR_LBL = { fhcomercial:'Comercial 4H', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', logistica:'Logística' };
+const SECTORES = ['fhcomercial','labocomercial','diseno','planificacion','compras','eerr','logistica'];
+const SECTOR_LBL = { fhcomercial:'Comercial 4H', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', eerr:'Gestión · EERR', logistica:'Logística' };
 // Cargos sugeridos por sector (texto libre por convención; estos son los usados hoy)
 const CARGOS = {
   fhcomercial: ['miembro'], labocomercial: ['miembro'],
   diseno: ['coordinador','diseno','lectura','admin'],
   planificacion: ['admin','coordinador','pm'],
-  compras: ['miembro'], logistica: ['miembro'],
+  compras: ['miembro'], eerr: ['miembro'], logistica: ['miembro'],
 };
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
