@@ -12,7 +12,9 @@
   'use strict';
 
   var SB_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
-  var SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjcGtwd3hocWRjZGxqZnd6Y215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDM4NDAsImV4cCI6MjA5NjYxOTg0MH0.MSTk46VAwdAsn5qNBdrHmGIiLYyN-rAyAZC72xZW3D4';
+  // Clave pública del proyecto (publishable). Reemplaza a la anon legacy, que se
+  // desactiva una vez migradas todas las apps del proyecto compartido.
+  var SB_ANON = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 
   var MODULOS = [
     { path: '/portal/',               nombre: 'Portal',              sector: null },
