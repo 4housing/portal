@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actividad · Portal 4housing</title>
+<style>
+  :root{
+    --bg:#f5f4f1; --paper:#ffffff; --ink:#20262e; --ink-soft:#5b646e; --ink-faint:#8b939c;
+    --line:#dfe2e6; --accent:#235a8f; --accent-soft:#e6eef6; --accent-ink:#12395e;
+    --ok:#1a7a45; --ok-soft:#e2f3e9; --warn:#9a5a12; --warn-soft:#f7efe0; --err:#a3372d;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --bg:#14181d; --paper:#1b2128; --ink:#e8ebee; --ink-soft:#a4adb6; --ink-faint:#6e7883;
+    --line:#2c343d; --accent:#7bafe0; --accent-soft:#1e3349; --accent-ink:#bcdcff;
+    --ok:#5fc98d; --ok-soft:#173024; --warn:#e0a352; --warn-soft:#3a2d15; --err:#e0796f;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;}
+  .wrap{max-width:1000px;margin:0 auto;padding:1.5rem 1.2rem 3rem;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;padding-bottom:1rem;border-bottom:1px solid var(--line);margin-bottom:1.2rem;}
+  .brand{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+  .brand h1{font-size:1.1rem;margin:0}
+  .brand .tag{font-family:var(--mono);font-size:.7rem;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:.05rem .4rem;letter-spacing:.06em;}
+  .brand a{color:var(--ink-soft);text-decoration:none;font-size:.85rem}
+  .brand a:hover{color:var(--ink)}
+  .controls{display:flex;gap:.4rem;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap}
+  .controls button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--ink-faint);background:var(--paper);color:var(--ink);padding:.35rem .8rem;font-size:.85rem;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .controls button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem;margin-bottom:1.4rem}
+  .kpi{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:.9rem 1rem}
+  .kpi .n{font-size:1.7rem;font-weight:700;line-height:1.1}
+  .kpi .l{font-size:.78rem;color:var(--ink-soft);margin-top:.2rem}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:1rem 1.1rem;margin-bottom:1.2rem}
+  .card h2{font-size:.95rem;margin:0 0 .8rem}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th,td{text-align:left;padding:.4rem .5rem;border-top:1px solid var(--line)}
+  th{color:var(--ink-soft);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;border-top:0}
+  .bar{height:9px;border-radius:5px;background:var(--accent);min-width:2px}
+  .bar-track{background:var(--accent-soft);border-radius:5px;overflow:hidden}
+  .muted{color:var(--ink-soft)}
+  .msg{color:var(--ink-soft);padding:2.5rem 0;text-align:center}
+  .pill{font-family:var(--mono);font-size:.68rem;padding:.1rem .45rem;border-radius:99px;font-weight:700;background:var(--accent-soft);color:var(--accent-ink)}
+  .badge{font-size:.68rem;padding:.05rem .4rem;border-radius:5px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><h1>4housing</h1><span class="tag">ACTIVIDAD</span>
+      <a href="/portal/">← portal</a> · <a href="/portal/admin.html">usuarios</a></div>
+    <span class="brand" id="who"></span>
+  </header>
+  <main id="main"><p class="msg">Cargando…</p></main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
+const SECTOR_LBL = { fhcomercial:'Comercial', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', eerr:'Gestión · EERR', logistica:'Logística' };
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = s => document.querySelector(s);
+let DIAS = 30;
+let USUARIOS_SECTOR = {}; // sector -> cantidad de usuarios asignados
+
+function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; }
+function fmtFecha(iso){ try{ return new Date(iso).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
+
+async function iniciar(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ window.location.href='/portal/'; return; }
+  const { data: yo } = await sb.from('perfiles').select('nombre, es_direccion, activo').eq('id', session.user.id).maybeSingle();
+  if(!yo || !yo.activo || !yo.es_direccion){
+    $('#main').innerHTML = '<p class="msg">Este tablero es solo para dirección.<br><a href="/portal/">Volver al portal</a></p>'; return;
+  }
+  $('#who').textContent = yo.nombre || session.user.email;
+  // usuarios por sector (denominador del ratio)
+  const { data: ps } = await sb.from('perfiles_sector').select('sector');
+  USUARIOS_SECTOR = {};
+  (ps||[]).forEach(r => { USUARIOS_SECTOR[r.sector] = (USUARIOS_SECTOR[r.sector]||0) + 1; });
+  cargar();
+}
+
+async function cargar(){
+  $('#main').innerHTML = controlesHTML() + '<p class="msg">Cargando actividad…</p>';
+  const desde = new Date(Date.now() - DIAS*86400000).toISOString();
+  const { data, error } = await sb.from('core_actividad').select('*').gte('fecha', desde).order('fecha', { ascending:false }).limit(20000);
+  if(error){ $('#main').innerHTML = controlesHTML() + '<p class="msg">Error: '+esc(error.message)+'<br><span class="muted">¿Corriste el 081 (vista core_actividad)?</span></p>'; return; }
+  render(data||[]);
+}
+
+function controlesHTML(){
+  return '<div class="controls"><span class="muted" style="font-size:.85rem;margin-right:.3rem">Período:</span>'
+    + [7,30,90].map(d=>'<button class="'+(d===DIAS?'on':'')+'" onclick="setDias('+d+')">'+d+' días</button>').join('')
+    + '</div>';
+}
+function setDias(d){ DIAS=d; cargar(); }
+
+function render(rows){
+  const porSector = {}, porDia = {}, porUsuario = {};
+  const activosSector = {}; // sector -> Set usuarios
+  rows.forEach(r => {
+    const s=r.sector||'—';
+    porSector[s]=(porSector[s]||0)+1;
+    (activosSector[s]=activosSector[s]||new Set()).add(r.usuario);
+    porUsuario[r.usuario]=(porUsuario[r.usuario]||0)+1;
+    const dia=(r.fecha||'').slice(0,10); if(dia) porDia[dia]=(porDia[dia]||0)+1;
+  });
+  const total = rows.length;
+  const sectoresOrd = Object.keys(porSector).sort((a,b)=>porSector[b]-porSector[a]);
+  const topSector = sectoresOrd[0];
+  const usuariosActivos = new Set(rows.map(r=>r.usuario)).size;
+  const maxSec = Math.max(1, ...sectoresOrd.map(s=>porSector[s]));
+
+  let h = controlesHTML();
+  // KPIs
+  h += '<div class="kpis">'
+    + kpi(total, 'movimientos en '+DIAS+' días')
+    + kpi(topSector?(SECTOR_LBL[topSector]||topSector):'—', 'sector más activo')
+    + kpi(usuariosActivos, 'usuarios con actividad')
+    + '</div>';
+
+  // Por sector + ratio
+  h += '<div class="card"><h2>Actividad por sector</h2><table><thead><tr><th>Sector</th><th>Movimientos</th><th></th><th>Usuarios</th><th>Activos</th><th>Ratio*</th></tr></thead><tbody>';
+  sectoresOrd.forEach(s=>{
+    const mov=porSector[s], usr=USUARIOS_SECTOR[s]||0, act=(activosSector[s]||new Set()).size;
+    const ratio = usr? (mov/usr).toFixed(1) : '—';
+    h += '<tr><td><b>'+esc(SECTOR_LBL[s]||s)+'</b></td><td>'+mov+'</td>'
+       + '<td style="width:34%"><div class="bar-track"><div class="bar" style="width:'+Math.round(mov/maxSec*100)+'%"></div></div></td>'
+       + '<td>'+usr+'</td><td>'+act+'</td><td><b>'+ratio+'</b></td></tr>';
+  });
+  h += '</tbody></table><div class="muted" style="font-size:.72rem;margin-top:.5rem">*Ratio = movimientos ÷ usuarios asignados al sector (más alto = sector más intenso por persona).</div></div>';
+
+  // Por día
+  const dias = Object.keys(porDia).sort();
+  const maxDia = Math.max(1, ...dias.map(d=>porDia[d]));
+  h += '<div class="card"><h2>Actividad por día</h2><table><tbody>';
+  dias.forEach(d=>{ h += '<tr><td style="width:90px" class="muted">'+d.slice(8,10)+'/'+d.slice(5,7)+'</td>'
+     + '<td style="width:60%"><div class="bar-track"><div class="bar" style="width:'+Math.round(porDia[d]/maxDia*100)+'%"></div></div></td>'
+     + '<td style="width:50px">'+porDia[d]+'</td></tr>'; });
+  if(!dias.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
+  h += '</tbody></table></div>';
+
+  // Top usuarios
+  const topU = Object.keys(porUsuario).sort((a,b)=>porUsuario[b]-porUsuario[a]).slice(0,10);
+  h += '<div class="card"><h2>Usuarios más activos</h2><table><tbody>';
+  topU.forEach(u=>{ h += '<tr><td>'+esc(u)+'</td><td style="width:60px;text-align:right"><b>'+porUsuario[u]+'</b></td></tr>'; });
+  if(!topU.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
+  h += '</tbody></table></div>';
+
+  // Últimos movimientos
+  h += '<div class="card"><h2>Últimos movimientos</h2><table><thead><tr><th>Fecha</th><th>Sector</th><th>Usuario</th><th>Acción</th><th>Dónde</th></tr></thead><tbody>';
+  rows.slice(0,50).forEach(r=>{ h += '<tr><td class="muted" style="white-space:nowrap">'+esc(fmtFecha(r.fecha))+'</td>'
+     + '<td><span class="pill">'+esc(SECTOR_LBL[r.sector]||r.sector)+'</span></td>'
+     + '<td>'+esc(r.usuario)+'</td><td>'+esc(r.accion||'—')+'</td><td class="muted">'+esc(r.fuente||'')+'</td></tr>'; });
+  h += '</tbody></table></div>';
+
+  $('#main').innerHTML = h;
+}
+function kpi(n,l){ return '<div class="kpi"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+
+iniciar();
+</script>
+</body>
+</html>
