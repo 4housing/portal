@@ -240,10 +240,11 @@ async function cargar(){
 
 function render(){
   let h = '<div class="card-note"><b>Cómo funciona:</b> a cada usuario le das acceso a una o más <b>apps</b>. '
-        + 'En cada app elegís un <b>rol</b> (Admin, Miembro con edición, o Solo visión) y tildás por <b>sección</b> qué puede <b>Ver</b> y qué puede <b>Editar</b> (editar implica ver; «solo visión» no edita). '
+        + 'En cada app elegís un <b>rol</b> y tildás por <b>sección</b> qué puede <b>Ver</b> y qué puede <b>Editar</b> (editar implica ver; «solo visión» no edita). '
+        + 'Los roles dependen de la app: la mayoría usa <b>Admin</b> / <b>Miembro con edición</b> / <b>Solo visión</b>; Diseño y Planificación además tienen <b>Coordinación</b> (y Planificación, <b>PM</b>). '
         + '<b>Dirección</b> es control total en todas las apps. '
         + 'Los cambios rigen desde la próxima carga de cada app. '
-        + '<i>Nota: por ahora Planificación es la única app que aplica estos accesos en vivo (vía Ver «Personal y tarifas» y «Base Neuquén»); el resto se irá conectando por etapas, pero ya podés dejar todo asignado.</i></div>';
+        + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial y LABO</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos). <b>Compras</b> y <b>EERR</b> se pueden asignar pero todavía no aplican los permisos (se conectan en una próxima etapa).</i></div>';
   USUARIOS.forEach(u => { h += tarjetaUsuario(u); });
   $main.innerHTML = h;
 }
