@@ -41,6 +41,9 @@
   select,input[type=text]{font:inherit;font-size:.85rem;padding:.35rem .5rem;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);}
   .msg{color:var(--ink-soft);padding:2.5rem 0;text-align:center;}
   .card-note{background:var(--warn-soft);border:1px solid var(--warn);border-radius:8px;padding:.8rem 1rem;font-size:.85rem;margin-bottom:1.2rem;}
+  .buscador{position:sticky;top:0;z-index:5;background:var(--bg);padding:.5rem 0 .7rem;margin-bottom:.3rem;}
+  .buscador input{width:100%;box-sizing:border-box;padding:.55rem .8rem;font-size:.95rem;border:1px solid var(--ink-faint);border-radius:9px;background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .buscador input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 
   .usuario{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.9rem;}
   .u-head{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;}
@@ -245,8 +248,20 @@ function render(){
         + '<b>Dirección</b> es control total en todas las apps. '
         + 'Los cambios rigen desde la próxima carga de cada app. '
         + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial y LABO</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos). <b>Compras</b> y <b>EERR</b> se pueden asignar pero todavía no aplican los permisos (se conectan en una próxima etapa).</i></div>';
-  USUARIOS.forEach(u => { h += tarjetaUsuario(u); });
+  h += '<div class="buscador"><input id="buscarUsuario" type="search" placeholder="🔎 Buscar usuario por nombre o email…" value="' + esc(filtroUsuarios) + '" oninput="onBuscar(this.value)" autocomplete="off"></div>';
+  h += '<div id="lista"></div>';
   $main.innerHTML = h;
+  pintarLista();
+}
+let filtroUsuarios = '';
+function onBuscar(v){ filtroUsuarios = v; pintarLista(); }
+function pintarLista(){
+  const cont = document.getElementById('lista'); if (!cont) return;
+  const q = (filtroUsuarios || '').trim().toLowerCase();
+  const lista = q ? USUARIOS.filter(u => (u.nombre || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)) : USUARIOS;
+  if (!lista.length) { cont.innerHTML = '<p class="msg">Ningún usuario coincide con «' + esc(filtroUsuarios) + '».</p>'; return; }
+  cont.innerHTML = lista.map(u => tarjetaUsuario(u)).join('')
+    + '<div style="font-size:.75rem;color:var(--ink-faint);margin:.6rem 0 0">' + lista.length + (q ? ' de ' + USUARIOS.length : '') + ' usuario' + (lista.length === 1 ? '' : 's') + '</div>';
 }
 
 function opcionesRol(sector, actual){
