@@ -97,15 +97,39 @@ const SECTOR_LBL = { fhcomercial:'Comercial 4H', labocomercial:'LABO', diseno:'D
 // las apps, no se asigna por app. Los tres de abajo se asignan por app en el
 // campo perfiles_sector.cargo. El rol define el default de la matriz Ver/Editar
 // y el techo de edición (lector nunca edita).
+// Roles por defecto (apps que solo distinguen editar/ver): Admin / Editor / Lector.
 const ROLES = [
   { key: 'admin',  label: 'Admin (ve y edita, amplio)' },
   { key: 'editor', label: 'Miembro con edición' },
-  { key: 'lector', label: 'Miembro solo visión' },
+  { key: 'lector', label: 'Solo visión' },
 ];
+// Algunas apps usan roles propios (Diseño y Planificación distinguen coordinación).
+// Se listan acá para que sean elecciones reales (no "heredadas") y NO se pierda su
+// comportamiento en la app.
+const ROLES_POR_SECTOR = {
+  diseno: [
+    { key: 'admin', label: 'Admin' }, { key: 'coordinador', label: 'Coordinación' },
+    { key: 'diseno', label: 'Diseño (edición)' }, { key: 'lector', label: 'Solo visión' },
+  ],
+  planificacion: [
+    { key: 'admin', label: 'Admin' }, { key: 'coordinador', label: 'Coordinación' },
+    { key: 'pm', label: 'PM' }, { key: 'editor', label: 'Miembro con edición' },
+    { key: 'lector', label: 'Solo visión' },
+  ],
+};
+function rolesDe(sector){ return ROLES_POR_SECTOR[sector] || ROLES; }
 const ROL_LBL = { admin: 'Admin', editor: 'Miembro c/edición', lector: 'Solo visión',
-                  // etiquetas heredadas (datos viejos) para mostrarlas prolijas
-                  coordinador: 'coordinador (heredado)', pm: 'pm (heredado)',
-                  miembro: 'miembro (heredado)', diseno: 'diseño (heredado)', lectura: 'lectura (heredado)' };
+                  coordinador: 'Coordinación', pm: 'PM', diseno: 'Diseño', miembro: 'Miembro', lectura: 'Solo visión' };
+// Roles que NO editan (solo visión) y rol "granular" (arranca sin edición, se tilda por sección).
+const ROLES_SOLO_VER = new Set(['lector', 'lectura']);
+const ROL_GRANULAR = 'editor';
+// Edición por defecto de un cargo cuando no hay lista guardada: los que solo ven → nada;
+// el editor granular → nada (se tilda a mano); el resto (admin/coordinador/diseño/pm/…) → todo.
+function editarDefault(cargo, ids){
+  if (ROLES_SOLO_VER.has(cargo)) return [];
+  if (cargo === ROL_GRANULAR) return [];
+  return ids.slice();
+}
 const ROL_DEFAULT = 'lector'; // al asignar un sector nuevo, arranca en el rol más acotado
 
 // ── Catálogo de secciones por app ───────────────────────────────────────────
@@ -140,7 +164,20 @@ const SECCIONES = {
     { id: 'traslados', label: 'Traslados' }, { id: 'actividad', label: 'Actividad' },
     { id: 'neuquen', label: 'Base Neuquén (toda la sede)' },
   ],
-  compras: [], eerr: [], logistica: [], // sin app publicada todavía
+  compras: [
+    { id: 'compras', label: 'Compras' }, { id: 'seguimiento', label: 'Seguimiento' },
+    { id: 'tesoreria', label: 'Tesorería' }, { id: 'solicitudes', label: 'Solicitudes de pago' },
+    { id: 'deposito', label: 'Depósito' }, { id: 'panol', label: 'Pañol' },
+    { id: 'mantenimiento', label: 'Mantenimiento' }, { id: 'logistica', label: 'Logística' },
+    { id: 'diccionarios', label: 'Diccionarios' }, { id: 'indices', label: 'Índices' },
+    { id: 'precios', label: 'Actualización de precios' },
+  ],
+  eerr: [
+    { id: 'eerr', label: 'Estado de Resultados' }, { id: 'pto', label: 'Presupuesto · Estructura' },
+    { id: 'cmv', label: 'Proyectos · CMV' }, { id: 'proy', label: 'Control Proyectos' },
+    { id: 'dic', label: 'Diccionario' },
+  ],
+  logistica: [], // sin app publicada todavía
 };
 
 // Secciones que un usuario nuevo NO ve por defecto (sensibles). Dirección las
@@ -165,8 +202,8 @@ function accesoEfectivo(sector, cargo, permisos){
       if (perm.ve_neuquen === false) ver = ver.filter(id => id !== 'neuquen');
     }
   }
-  if (!editar) editar = (cargo === 'admin') ? cat.map(s => s.id) : [];
-  if (cargo === 'lector') editar = [];
+  if (!editar) editar = editarDefault(cargo, cat.map(s => s.id));
+  if (ROLES_SOLO_VER.has(cargo)) editar = [];
   const verSet = new Set(ver);
   editar = editar.filter(id => verSet.has(id)); // editar ⊂ ver
   return { ver, editar };
@@ -211,10 +248,11 @@ function render(){
   $main.innerHTML = h;
 }
 
-function opcionesRol(actual){
-  let ops = ROLES.map(r => '<option value="' + r.key + '"' + (r.key === actual ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('');
-  // si el valor guardado es heredado (no está entre ROLES), lo mostramos igual
-  if (actual && !ROLES.some(r => r.key === actual)) {
+function opcionesRol(sector, actual){
+  const roles = rolesDe(sector);
+  let ops = roles.map(r => '<option value="' + r.key + '"' + (r.key === actual ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('');
+  // si el valor guardado no está en la lista del sector, lo mostramos igual (sin perderlo)
+  if (actual && !roles.some(r => r.key === actual)) {
     ops = '<option value="' + esc(actual) + '" selected>' + esc(ROL_LBL[actual] || actual) + '</option>' + ops;
   }
   return ops;
@@ -223,7 +261,7 @@ function opcionesRol(actual){
 function bloqueSector(u, s){
   const dir = u.es_direccion;
   const rol = s.cargo || '';
-  const esLector = rol === 'lector';
+  const esLector = ROLES_SOLO_VER.has(rol);
   const cat = SECCIONES[s.sector] || [];
   const { ver, editar } = accesoEfectivo(s.sector, rol, s.permisos);
   const verSet = new Set(ver), edSet = new Set(editar);
@@ -248,7 +286,7 @@ function bloqueSector(u, s){
 
   return '<div class="sec-block">'
     + '<div class="sec-head"><b>' + esc(SECTOR_LBL[s.sector] || s.sector) + '</b>'
-    +   '<select title="Rol en esta app" ' + (dir ? 'disabled' : '') + ' onchange="cambiarRol(\'' + u.id + '\',\'' + s.sector + '\',this.value)">' + opcionesRol(rol) + '</select>'
+    +   '<select title="Rol en esta app" ' + (dir ? 'disabled' : '') + ' onchange="cambiarRol(\'' + u.id + '\',\'' + s.sector + '\',this.value)">' + opcionesRol(s.sector, rol) + '</select>'
     +   '<button class="btn-quitar" title="Quitar app" onclick="quitarSector(\'' + u.id + '\', \'' + s.sector + '\')">✕ quitar</button>'
     + '</div>'
     + matriz
@@ -335,9 +373,9 @@ async function cambiarRol(uid, sector, rol){
   if (rol === 'admin') ver = cat.slice(); // admin ve todo
   const verSet = new Set(ver);
   let editar;
-  if (rol === 'admin') editar = cat.filter(id => verSet.has(id));
-  else if (rol === 'lector') editar = [];
-  else editar = (Array.isArray(prev.editar) ? prev.editar : []).filter(id => verSet.has(id));
+  if (ROLES_SOLO_VER.has(rol)) editar = [];                         // solo visión: no edita
+  else if (rol === ROL_GRANULAR) editar = (Array.isArray(prev.editar) ? prev.editar : []).filter(id => verSet.has(id)); // editor granular: conserva lo tildado
+  else editar = editarDefault(rol, cat).filter(id => verSet.has(id)); // admin/coordinación/diseño/pm → edita todo lo que ve
   const permisos = syncFlagsPlan(sector, Object.assign({}, prev, { ver: ver, editar: editar }), verSet);
   const { error } = await sb.from('perfiles_sector').update({ cargo: rol, permisos: permisos }).eq('perfil_id', uid).eq('sector', sector);
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
