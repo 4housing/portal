@@ -52,6 +52,8 @@
   .chip{display:inline-flex;align-items:center;gap:.45rem;background:var(--accent-soft);color:var(--accent-ink);border-radius:6px;padding:.25rem .6rem;font-size:.8rem;}
   .chip b{font-family:var(--mono);font-size:.75rem;}
   .chip .vs{font-size:.68rem;background:var(--paper);border-radius:4px;padding:0 .3rem;}
+  .chip .perm{display:inline-flex;align-items:center;gap:.25rem;font-size:.72rem;background:var(--paper);border-radius:4px;padding:.05rem .4rem;cursor:pointer;}
+  .chip .perm input{margin:0;cursor:pointer;}
   .chip button{border:none;background:none;color:inherit;padding:0 .1rem;font-size:.9rem;line-height:1;}
   .agregar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;}
   .estado-linea{font-size:.8rem;margin-top:.5rem;min-height:1.1em;}
@@ -82,6 +84,19 @@ const CARGOS = {
   diseno: ['coordinador','diseno','lectura','admin'],
   planificacion: ['admin','coordinador','pm'],
   compras: ['miembro'], eerr: ['miembro'], logistica: ['miembro'],
+};
+
+// Permisos finos por sector: se muestran como checkboxes en cada chip de la tarjeta.
+//   key = clave dentro de perfiles_sector.permisos (jsonb) que lee la app.
+//   def = valor efectivo cuando la clave NO está guardada; respeta el
+//         comportamiento de cada app (ve_sueldos deniega por defecto;
+//         ve_neuquen concede por defecto).
+// Para sumar un permiso nuevo: agregarlo acá y hacer que la app lea esa clave.
+const PERMISOS_SECTOR = {
+  planificacion: [
+    { key: 've_sueldos', label: 'Ver sueldos', def: false },
+    { key: 've_neuquen', label: 'Base Neuquén', def: true },
+  ],
 };
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -116,6 +131,7 @@ async function cargar(){
 function render(){
   let h = '<div class="card-note"><b>Alta de usuarios:</b> las cuentas se crean solas con el primer login Microsoft '
         + '(o pre-creándolas en el dashboard de Supabase). Acá se activan y se les asignan sectores y cargos. '
+        + 'Cada app suma sus <b>permisos</b> como casillas dentro del chip del sector (marcá/desmarcá para dar o quitar acceso a esa sección). '
         + 'Los cambios rigen desde la próxima carga de cada app.</div>';
   USUARIOS.forEach(u => { h += tarjetaUsuario(u); });
   $main.innerHTML = h;
@@ -125,12 +141,17 @@ function tarjetaUsuario(u){
   const sectores = (u.perfiles_sector || []).slice()
     .sort((a,b) => a.sector.localeCompare(b.sector));
   let chips = sectores.map(s => {
-    const vs = s.permisos && s.permisos.ve_sueldos === true;
+    const defs = PERMISOS_SECTOR[s.sector] || [];
+    const perms = defs.map(pd => {
+      const guardado = s.permisos && Object.prototype.hasOwnProperty.call(s.permisos, pd.key);
+      const eff = guardado ? (s.permisos[pd.key] === true) : pd.def;
+      return '<label class="perm" title="' + esc(pd.label) + '">'
+        + '<input type="checkbox" ' + (eff ? 'checked' : '')
+        + ' onchange="togglePermiso(\'' + u.id + '\',\'' + s.sector + '\',\'' + pd.key + '\',this.checked)"> '
+        + esc(pd.label) + '</label>';
+    }).join('');
     return '<span class="chip">' + esc(SECTOR_LBL[s.sector] || s.sector) + ' <b>' + esc(s.cargo) + '</b>'
-      + (vs ? '<span class="vs" title="ve sueldos">$</span>' : '')
-      + (s.sector === 'planificacion'
-          ? '<button title="' + (vs ? 'Quitar' : 'Dar') + ' permiso de ver sueldos" onclick="toggleVeSueldos(\'' + u.id + '\', ' + !vs + ')">' + (vs ? '$̶' : '$') + '</button>'
-          : '')
+      + perms
       + '<button title="Quitar sector" onclick="quitarSector(\'' + u.id + '\', \'' + s.sector + '\')">✕</button></span>';
   }).join('');
 
@@ -202,15 +223,17 @@ async function quitarSector(uid, sector){
   await cargar();
 }
 
-async function toggleVeSueldos(uid, valor){
+async function togglePermiso(uid, sector, key, valor){
   const u = USUARIOS.find(x => x.id === uid);
-  const fila = u && (u.perfiles_sector || []).find(s => s.sector === 'planificacion');
+  const fila = u && (u.perfiles_sector || []).find(s => s.sector === sector);
   if (!fila) return;
-  const permisos = Object.assign({}, fila.permisos || {}, { ve_sueldos: valor });
+  const permisos = Object.assign({}, fila.permisos || {}, { [key]: valor });
   const { error } = await sb.from('perfiles_sector').update({ permisos: permisos })
-    .eq('perfil_id', uid).eq('sector', 'planificacion');
+    .eq('perfil_id', uid).eq('sector', sector);
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
-  estado(uid, valor ? '✓ Ahora ve sueldos en Planificación.' : '✓ Ya no ve sueldos.', 'ok');
+  const def = (PERMISOS_SECTOR[sector] || []).find(p => p.key === key);
+  const lbl = (def && def.label) || key;
+  estado(uid, '✓ ' + lbl + ': ' + (valor ? 'sí' : 'no') + '. (rige en la próxima carga de la app)', 'ok');
   await cargar();
 }
 
