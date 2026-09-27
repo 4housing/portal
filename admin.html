@@ -151,7 +151,7 @@ const SECCIONES = {
   labocomercial: [
     { id: 'pipeline', label: 'Pipeline' }, { id: 'prospectos', label: 'Prospectos' },
     { id: 'analisis', label: 'Análisis' }, { id: 'seguimiento', label: 'Seguimiento' },
-    { id: 'cotizador', label: 'Cotizador' },
+    { id: 'actividad', label: 'Actividad (auditoría)' }, { id: 'cotizador', label: 'Cotizador' },
   ],
   diseno: [
     { id: 'dash', label: 'Dashboard' }, { id: 'proj', label: 'Proyectos' },
@@ -187,6 +187,7 @@ const SECCIONES = {
 // habilita a mano. (Actividad además es admin-only dentro de la app.)
 const SENSIBLE_DEFAULT = {
   planificacion: new Set(['personal', 'traslados', 'actividad']),
+  labocomercial: new Set(['actividad']),
 };
 
 // Acceso efectivo (para pintar la matriz) a partir del rol + permisos guardados.
