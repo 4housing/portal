@@ -48,14 +48,24 @@
   .pill.on{background:var(--ok-soft);color:var(--ok);}
   .pill.off{background:var(--line);color:var(--ink-faint);}
   .pill.dir{background:var(--accent-soft);color:var(--accent-ink);}
-  .sectores{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem;align-items:center;}
-  .chip{display:inline-flex;align-items:center;gap:.45rem;background:var(--accent-soft);color:var(--accent-ink);border-radius:6px;padding:.25rem .6rem;font-size:.8rem;}
-  .chip b{font-family:var(--mono);font-size:.75rem;}
-  .chip .vs{font-size:.68rem;background:var(--paper);border-radius:4px;padding:0 .3rem;}
-  .chip .perm{display:inline-flex;align-items:center;gap:.25rem;font-size:.72rem;background:var(--paper);border-radius:4px;padding:.05rem .4rem;cursor:pointer;}
-  .chip .perm input{margin:0;cursor:pointer;}
-  .chip button{border:none;background:none;color:inherit;padding:0 .1rem;font-size:.9rem;line-height:1;}
-  .agregar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;}
+  .sectores{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:.8rem;align-items:stretch;}
+  .sec-block{background:var(--accent-soft);border:1px solid var(--line);border-radius:8px;padding:.6rem .7rem;min-width:240px;flex:1 1 240px;max-width:340px;}
+  .sec-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;}
+  .sec-head b{color:var(--accent-ink);font-size:.85rem;}
+  .sec-head select{font-size:.78rem;padding:.2rem .35rem;}
+  .btn-quitar{border:none;background:none;color:var(--ink-soft);font-size:.72rem;cursor:pointer;margin-left:auto;padding:0;}
+  .btn-quitar:hover{color:var(--err);}
+  .mx{background:var(--paper);border-radius:6px;overflow:hidden;}
+  .mx-row{display:grid;grid-template-columns:1fr 2.4rem 2.4rem;align-items:center;gap:.3rem;padding:.2rem .5rem;font-size:.76rem;}
+  .mx-row span:nth-child(2),.mx-row span:nth-child(3){text-align:center;}
+  .mx-row+.mx-row{border-top:1px solid var(--line);}
+  .mx-head{font-weight:700;font-size:.68rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;background:var(--accent-soft);}
+  .mx-row input{margin:0;cursor:pointer;}
+  .mx-row input:disabled{cursor:not-allowed;opacity:.4;}
+  .mx-note{font-size:.75rem;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:.4rem .6rem;}
+  .u-flags .dir-on{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);font-weight:700;}
+  .agregar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.7rem;font-size:.8rem;color:var(--ink-soft);}
+  .agregar-hint{font-size:.72rem;color:var(--ink-faint);}
   .estado-linea{font-size:.8rem;margin-top:.5rem;min-height:1.1em;}
   .estado-linea.ok{color:var(--ok);} .estado-linea.err{color:var(--err);}
   .footer-note{font-size:.78rem;color:var(--ink-faint);margin-top:1.5rem;}
@@ -78,26 +88,77 @@ const SUPABASE_ANON_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 
 const SECTORES = ['fhcomercial','labocomercial','diseno','planificacion','compras','eerr','logistica'];
 const SECTOR_LBL = { fhcomercial:'Comercial 4H', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', eerr:'Gestión · EERR', logistica:'Logística' };
-// Cargos sugeridos por sector (texto libre por convención; estos son los usados hoy)
-const CARGOS = {
-  fhcomercial: ['miembro'], labocomercial: ['miembro'],
-  diseno: ['coordinador','diseno','lectura','admin'],
-  planificacion: ['coordinador','pm','admin'],
-  compras: ['miembro'], eerr: ['miembro'], logistica: ['miembro'],
+// ── Roles unificados (mismos para todas las apps) ───────────────────────────
+// Dirección es un flag global (perfiles.es_direccion): ve y edita TODO en todas
+// las apps, no se asigna por app. Los tres de abajo se asignan por app en el
+// campo perfiles_sector.cargo. El rol define el default de la matriz Ver/Editar
+// y el techo de edición (lector nunca edita).
+const ROLES = [
+  { key: 'admin',  label: 'Admin (ve y edita, amplio)' },
+  { key: 'editor', label: 'Miembro con edición' },
+  { key: 'lector', label: 'Miembro solo visión' },
+];
+const ROL_LBL = { admin: 'Admin', editor: 'Miembro c/edición', lector: 'Solo visión',
+                  // etiquetas heredadas (datos viejos) para mostrarlas prolijas
+                  coordinador: 'coordinador (heredado)', pm: 'pm (heredado)',
+                  miembro: 'miembro (heredado)', diseno: 'diseño (heredado)', lectura: 'lectura (heredado)' };
+const ROL_DEFAULT = 'lector'; // al asignar un sector nuevo, arranca en el rol más acotado
+
+// ── Catálogo de secciones por app ───────────────────────────────────────────
+// Son las secciones (pestañas) que dirección puede habilitar para Ver / Editar.
+// Coarse a propósito: una fila por pestaña de nivel superior. Se afina con el uso.
+const SECCIONES = {
+  fhcomercial: [
+    { id: 'dashboard', label: 'Panel (Rental)' }, { id: 'quotes', label: 'Cotizaciones (Rental)' },
+    { id: 'catalog', label: 'Catálogo' }, { id: 'dashboard_ventas', label: 'Panel (Ventas)' },
+    { id: 'ventas', label: 'Cotizaciones (Ventas)' }, { id: 'cobranzas', label: 'Cobranzas' },
+    { id: 'opps', label: 'Oportunidades' }, { id: 'prosp', label: 'Prospección' },
+    { id: 'clients', label: 'Clientes' }, { id: 'audit', label: 'Historial' },
+    { id: 'cierres', label: 'Cierres mensuales' },
+  ],
+  labocomercial: [
+    { id: 'pipeline', label: 'Pipeline' }, { id: 'analisis', label: 'Análisis' },
+    { id: 'seguimiento', label: 'Seguimiento' }, { id: 'cotizador', label: 'Cotizador' },
+  ],
+  diseno: [
+    { id: 'dash', label: 'Dashboard' }, { id: 'proj', label: 'Proyectos' },
+    { id: 'desvios', label: 'Desvíos & NC' }, { id: 'audit', label: 'Auditoría IA' },
+  ],
+  planificacion: [
+    { id: 'dash', label: 'Dashboard' }, { id: 'proyectos', label: 'Proyectos' },
+    { id: 'personal', label: 'Personal y tarifas' }, { id: 'dispo', label: 'Disponibilidad' },
+    { id: 'feriados', label: 'Feriados' }, { id: 'plani', label: 'Planificación General' },
+    { id: 'detalle', label: 'Detalle diario' }, { id: 'gantt', label: 'Gantt' },
+    { id: 'histo', label: 'Histograma' }, { id: 'parte', label: 'Parte diario' },
+    { id: 'informe', label: 'Informe de cierre' }, { id: 'costos', label: 'Tablero' },
+    { id: 'traslados', label: 'Traslados' }, { id: 'actividad', label: 'Actividad' },
+    { id: 'neuquen', label: 'Base Neuquén (toda la sede)' },
+  ],
+  compras: [], eerr: [], logistica: [], // sin app publicada todavía
 };
 
-// Permisos finos por sector: se muestran como checkboxes en cada chip de la tarjeta.
-//   key = clave dentro de perfiles_sector.permisos (jsonb) que lee la app.
-//   def = valor efectivo cuando la clave NO está guardada; respeta el
-//         comportamiento de cada app (ve_sueldos deniega por defecto;
-//         ve_neuquen concede por defecto).
-// Para sumar un permiso nuevo: agregarlo acá y hacer que la app lea esa clave.
-const PERMISOS_SECTOR = {
-  planificacion: [
-    { key: 've_sueldos', label: 'Ver sueldos', def: false },
-    { key: 've_neuquen', label: 'Base Neuquén', def: true },
-  ],
-};
+// Acceso efectivo (para pintar la matriz) a partir del rol + permisos guardados.
+// Si no hay listas guardadas se usan defaults: ver = todo; editar = todo si admin,
+// nada si editor/lector. Para Planificación se respetan los flags en vivo
+// (ve_sueldos / ve_neuquen) mientras las apps no lean todavía ver/editar.
+function accesoEfectivo(sector, cargo, permisos){
+  const cat = SECCIONES[sector] || [];
+  const perm = permisos || {};
+  let ver = Array.isArray(perm.ver) ? perm.ver.slice() : null;
+  let editar = Array.isArray(perm.editar) ? perm.editar.slice() : null;
+  if (!ver) {
+    ver = cat.map(s => s.id);
+    if (sector === 'planificacion') {
+      if (perm.ve_sueldos !== true) ver = ver.filter(id => id !== 'personal');
+      if (perm.ve_neuquen === false) ver = ver.filter(id => id !== 'neuquen');
+    }
+  }
+  if (!editar) editar = (cargo === 'admin') ? cat.map(s => s.id) : [];
+  if (cargo === 'lector') editar = [];
+  const verSet = new Set(ver);
+  editar = editar.filter(id => verSet.has(id)); // editar ⊂ ver
+  return { ver, editar };
+}
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $main = document.getElementById('main');
@@ -129,41 +190,72 @@ async function cargar(){
 }
 
 function render(){
-  let h = '<div class="card-note"><b>Alta de usuarios:</b> las cuentas se crean solas con el primer login Microsoft '
-        + '(o pre-creándolas en el dashboard de Supabase). Acá se activan y se les asignan sectores y cargos. '
-        + 'Cada app suma sus <b>permisos</b> como casillas dentro del chip del sector (marcá/desmarcá para dar o quitar acceso a esa sección). '
-        + 'Los cambios rigen desde la próxima carga de cada app.</div>';
+  let h = '<div class="card-note"><b>Cómo funciona:</b> a cada usuario le das acceso a una o más <b>apps</b>. '
+        + 'En cada app elegís un <b>rol</b> (Admin, Miembro con edición, o Solo visión) y tildás por <b>sección</b> qué puede <b>Ver</b> y qué puede <b>Editar</b> (editar implica ver; «solo visión» no edita). '
+        + '<b>Dirección</b> es control total en todas las apps. '
+        + 'Los cambios rigen desde la próxima carga de cada app. '
+        + '<i>Nota: por ahora Planificación es la única app que aplica estos accesos en vivo (vía Ver «Personal y tarifas» y «Base Neuquén»); el resto se irá conectando por etapas, pero ya podés dejar todo asignado.</i></div>';
   USUARIOS.forEach(u => { h += tarjetaUsuario(u); });
   $main.innerHTML = h;
+}
+
+function opcionesRol(actual){
+  let ops = ROLES.map(r => '<option value="' + r.key + '"' + (r.key === actual ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('');
+  // si el valor guardado es heredado (no está entre ROLES), lo mostramos igual
+  if (actual && !ROLES.some(r => r.key === actual)) {
+    ops = '<option value="' + esc(actual) + '" selected>' + esc(ROL_LBL[actual] || actual) + '</option>' + ops;
+  }
+  return ops;
+}
+
+function bloqueSector(u, s){
+  const dir = u.es_direccion;
+  const rol = s.cargo || '';
+  const esLector = rol === 'lector';
+  const cat = SECCIONES[s.sector] || [];
+  const { ver, editar } = accesoEfectivo(s.sector, rol, s.permisos);
+  const verSet = new Set(ver), edSet = new Set(editar);
+
+  let matriz;
+  if (dir) {
+    matriz = '<div class="mx-note">Dirección: ve y edita todo.</div>';
+  } else if (!cat.length) {
+    matriz = '<div class="mx-note">Esta app todavía no publica secciones para controlar.</div>';
+  } else {
+    matriz = '<div class="mx"><div class="mx-row mx-head"><span>Sección</span><span>Ver</span><span>Editar</span></div>'
+      + cat.map(sec => {
+          const v = verSet.has(sec.id), e = edSet.has(sec.id);
+          const base = "'" + u.id + "','" + s.sector + "','" + sec.id + "'";
+          return '<div class="mx-row"><span>' + esc(sec.label) + '</span>'
+            + '<span><input type="checkbox" ' + (v ? 'checked' : '') + ' onchange="toggleAcceso(' + base + ",'ver',this.checked)\"></span>"
+            + '<span><input type="checkbox" ' + (e ? 'checked' : '') + (esLector ? ' disabled title="Solo visión no edita"' : '')
+            + ' onchange="toggleAcceso(' + base + ",'editar',this.checked)\"></span></div>";
+        }).join('')
+      + '</div>';
+  }
+
+  return '<div class="sec-block">'
+    + '<div class="sec-head"><b>' + esc(SECTOR_LBL[s.sector] || s.sector) + '</b>'
+    +   '<select title="Rol en esta app" ' + (dir ? 'disabled' : '') + ' onchange="cambiarRol(\'' + u.id + '\',\'' + s.sector + '\',this.value)">' + opcionesRol(rol) + '</select>'
+    +   '<button class="btn-quitar" title="Quitar app" onclick="quitarSector(\'' + u.id + '\', \'' + s.sector + '\')">✕ quitar</button>'
+    + '</div>'
+    + matriz
+    + '</div>';
 }
 
 function tarjetaUsuario(u){
   const sectores = (u.perfiles_sector || []).slice()
     .sort((a,b) => a.sector.localeCompare(b.sector));
-  let chips = sectores.map(s => {
-    const defs = PERMISOS_SECTOR[s.sector] || [];
-    const perms = defs.map(pd => {
-      const guardado = s.permisos && Object.prototype.hasOwnProperty.call(s.permisos, pd.key);
-      const eff = guardado ? (s.permisos[pd.key] === true) : pd.def;
-      return '<label class="perm" title="' + esc(pd.label) + '">'
-        + '<input type="checkbox" ' + (eff ? 'checked' : '')
-        + ' onchange="togglePermiso(\'' + u.id + '\',\'' + s.sector + '\',\'' + pd.key + '\',this.checked)"> '
-        + esc(pd.label) + '</label>';
-    }).join('');
-    return '<span class="chip">' + esc(SECTOR_LBL[s.sector] || s.sector) + ' <b>' + esc(s.cargo) + '</b>'
-      + perms
-      + '<button title="Quitar sector" onclick="quitarSector(\'' + u.id + '\', \'' + s.sector + '\')">✕</button></span>';
-  }).join('');
+  const bloques = sectores.map(s => bloqueSector(u, s)).join('');
 
   const usados = sectores.map(s => s.sector);
   const disponibles = SECTORES.filter(s => usados.indexOf(s) < 0);
-  const opcionesCargo = (sec) => (CARGOS[sec] || ['miembro']).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
-  const selSector = '<select id="sec-' + u.id + '" onchange="sugerirCargos(\'' + u.id + '\')">'
+  const selSector = '<select id="sec-' + u.id + '">'
     + disponibles.map(s => '<option value="' + s + '">' + esc(SECTOR_LBL[s]) + '</option>').join('') + '</select>';
   const agregar = disponibles.length
-    ? '<span class="agregar">' + selSector
-      + '<select id="cargo-' + u.id + '" title="Tipo de usuario">' + opcionesCargo(disponibles[0]) + '</select>'
-      + '<button onclick="agregarSector(\'' + u.id + '\')">+ sector</button></span>'
+    ? '<div class="agregar">Dar acceso a una app: ' + selSector
+      + '<button onclick="agregarSector(\'' + u.id + '\')">+ app</button>'
+      + '<span class="agregar-hint">(arranca como «solo visión»)</span></div>'
     : '';
 
   return '<div class="usuario">'
@@ -171,12 +263,13 @@ function tarjetaUsuario(u){
     +   '<span class="u-nombre">' + esc(u.nombre || '(sin nombre)') + '</span>'
     +   '<span class="u-email">' + esc(u.email) + '</span>'
     +   '<span class="u-flags">'
-    +     (u.es_direccion ? '<span class="pill dir">DIRECCIÓN</span>' : '')
+    +     '<button class="' + (u.es_direccion ? 'dir-on' : '') + '" title="Dirección: control total en todas las apps" onclick="toggleDireccion(\'' + u.id + '\', ' + !u.es_direccion + ')">' + (u.es_direccion ? '★ Dirección' : 'Hacer dirección') + '</button>'
     +     '<span class="pill ' + (u.activo ? 'on' : 'off') + '">' + (u.activo ? 'ACTIVO' : 'INACTIVO') + '</span>'
     +     '<button onclick="toggleActivo(\'' + u.id + '\', ' + !u.activo + ')">' + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
     +   '</span>'
     + '</div>'
-    + '<div class="sectores">' + (chips || '<span style="font-size:.8rem;color:var(--ink-faint)">sin sectores</span>') + agregar + '</div>'
+    + '<div class="sectores">' + (bloques || '<span style="font-size:.8rem;color:var(--ink-faint)">sin apps asignadas</span>') + '</div>'
+    + agregar
     + '<div class="estado-linea" id="est-' + u.id + '"></div>'
     + '</div>';
 }
@@ -184,12 +277,6 @@ function tarjetaUsuario(u){
 function estado(uid, texto, tipo){
   const el = document.getElementById('est-' + uid);
   if (el) { el.textContent = texto; el.className = 'estado-linea ' + (tipo || ''); }
-}
-
-function sugerirCargos(uid){
-  const sec = document.getElementById('sec-' + uid).value;
-  const selCargo = document.getElementById('cargo-' + uid);
-  if (selCargo) selCargo.innerHTML = (CARGOS[sec] || ['miembro']).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
 }
 
 async function toggleActivo(uid, valor){
@@ -203,11 +290,66 @@ async function toggleActivo(uid, valor){
 
 async function agregarSector(uid){
   const sector = document.getElementById('sec-' + uid).value;
-  const cargo = (document.getElementById('cargo-' + uid).value || 'miembro').trim();
   const { error } = await sb.from('perfiles_sector')
-    .upsert({ perfil_id: uid, sector: sector, cargo: cargo }, { onConflict: 'perfil_id,sector' });
+    .upsert({ perfil_id: uid, sector: sector, cargo: ROL_DEFAULT }, { onConflict: 'perfil_id,sector' });
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
-  estado(uid, '✓ Sector ' + (SECTOR_LBL[sector] || sector) + ' asignado como ' + cargo + '.', 'ok');
+  estado(uid, '✓ ' + (SECTOR_LBL[sector] || sector) + ' asignada como «solo visión». Ajustá el rol y los accesos abajo.', 'ok');
+  await cargar();
+}
+
+async function cambiarRol(uid, sector, rol){
+  const u = USUARIOS.find(x => x.id === uid);
+  const fila = u && (u.perfiles_sector || []).find(s => s.sector === sector);
+  if (!fila) return;
+  const upd = { cargo: rol };
+  // Solo visión no edita nada: al pasar a lector, vaciar la lista de edición.
+  if (rol === 'lector') {
+    const permisos = Object.assign({}, fila.permisos || {}, { editar: [] });
+    upd.permisos = permisos;
+  }
+  const { error } = await sb.from('perfiles_sector').update(upd).eq('perfil_id', uid).eq('sector', sector);
+  if (error) return estado(uid, 'Error: ' + error.message, 'err');
+  estado(uid, '✓ Rol en ' + (SECTOR_LBL[sector] || sector) + ': ' + (ROL_LBL[rol] || rol) + '.', 'ok');
+  await cargar();
+}
+
+async function toggleAcceso(uid, sector, secId, tipo, valor){
+  const u = USUARIOS.find(x => x.id === uid);
+  const fila = u && (u.perfiles_sector || []).find(s => s.sector === sector);
+  if (!fila) return;
+  const eff = accesoEfectivo(sector, fila.cargo, fila.permisos);
+  let ver = new Set(eff.ver), editar = new Set(eff.editar);
+  if (tipo === 'ver') {
+    if (valor) ver.add(secId); else { ver.delete(secId); editar.delete(secId); } // sin ver no hay editar
+  } else { // editar
+    if (valor) { editar.add(secId); ver.add(secId); } else editar.delete(secId); // editar implica ver
+  }
+  if (fila.cargo === 'lector') editar = new Set(); // por las dudas
+  const verArr = (SECCIONES[sector] || []).map(s => s.id).filter(id => ver.has(id));
+  const editarArr = verArr.filter(id => editar.has(id));
+  const permisos = Object.assign({}, fila.permisos || {}, { ver: verArr, editar: editarArr });
+  // Puente con Planificación en vivo: mantener sincronizados los flags que la app ya lee.
+  if (sector === 'planificacion') {
+    permisos.ve_sueldos = ver.has('personal');
+    permisos.ve_neuquen = ver.has('neuquen');
+  }
+  const { error } = await sb.from('perfiles_sector').update({ permisos: permisos }).eq('perfil_id', uid).eq('sector', sector);
+  if (error) return estado(uid, 'Error: ' + error.message, 'err');
+  const lbl = ((SECCIONES[sector] || []).find(s => s.id === secId) || {}).label || secId;
+  estado(uid, '✓ ' + lbl + ' — ' + (tipo === 'ver' ? 'Ver' : 'Editar') + ': ' + (valor ? 'sí' : 'no') + '.', 'ok');
+  await cargar();
+}
+
+async function toggleDireccion(uid, valor){
+  const u = USUARIOS.find(x => x.id === uid);
+  const quien = (u && (u.nombre || u.email)) || 'este usuario';
+  const msg = valor
+    ? 'Vas a dar DIRECCIÓN a ' + quien + ': control total (ve y edita todo) en TODAS las apps. ¿Seguro?'
+    : 'Vas a quitar DIRECCIÓN a ' + quien + '. Va a depender de los roles que tenga por app. ¿Seguro?';
+  if (!confirm(msg)) return;
+  const { error } = await sb.from('perfiles').update({ es_direccion: valor }).eq('id', uid);
+  if (error) return estado(uid, 'Error: ' + error.message, 'err');
+  estado(uid, valor ? '✓ Ahora es Dirección.' : '✓ Ya no es Dirección.', 'ok');
   await cargar();
 }
 
@@ -221,19 +363,6 @@ async function quitarSector(uid, sector){
   await cargar();
 }
 
-async function togglePermiso(uid, sector, key, valor){
-  const u = USUARIOS.find(x => x.id === uid);
-  const fila = u && (u.perfiles_sector || []).find(s => s.sector === sector);
-  if (!fila) return;
-  const permisos = Object.assign({}, fila.permisos || {}, { [key]: valor });
-  const { error } = await sb.from('perfiles_sector').update({ permisos: permisos })
-    .eq('perfil_id', uid).eq('sector', sector);
-  if (error) return estado(uid, 'Error: ' + error.message, 'err');
-  const def = (PERMISOS_SECTOR[sector] || []).find(p => p.key === key);
-  const lbl = (def && def.label) || key;
-  estado(uid, '✓ ' + lbl + ': ' + (valor ? 'sí' : 'no') + '. (rige en la próxima carga de la app)', 'ok');
-  await cargar();
-}
 
 iniciar();
 </script>
