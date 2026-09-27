@@ -137,6 +137,12 @@ const SECCIONES = {
   compras: [], eerr: [], logistica: [], // sin app publicada todavía
 };
 
+// Secciones que un usuario nuevo NO ve por defecto (sensibles). Dirección las
+// habilita a mano. (Actividad además es admin-only dentro de la app.)
+const SENSIBLE_DEFAULT = {
+  planificacion: new Set(['personal', 'traslados', 'actividad']),
+};
+
 // Acceso efectivo (para pintar la matriz) a partir del rol + permisos guardados.
 // Si no hay listas guardadas se usan defaults: ver = todo; editar = todo si admin,
 // nada si editor/lector. Para Planificación se respetan los flags en vivo
@@ -288,26 +294,46 @@ async function toggleActivo(uid, valor){
   await cargar();
 }
 
+// Sincroniza los flags que Planificación lee en vivo con la lista Ver.
+function syncFlagsPlan(sector, permisos, verSet){
+  if (sector !== 'planificacion') return permisos;
+  permisos.ve_sueldos = verSet.has('personal');
+  permisos.ve_neuquen = verSet.has('neuquen');
+  return permisos;
+}
+
 async function agregarSector(uid){
   const sector = document.getElementById('sec-' + uid).value;
+  const cat = (SECCIONES[sector] || []).map(s => s.id);
+  const sens = SENSIBLE_DEFAULT[sector] || new Set();
+  const ver = cat.filter(id => !sens.has(id)); // solo visión, sin secciones sensibles
+  const permisos = syncFlagsPlan(sector, { ver: ver, editar: [] }, new Set(ver));
   const { error } = await sb.from('perfiles_sector')
-    .upsert({ perfil_id: uid, sector: sector, cargo: ROL_DEFAULT }, { onConflict: 'perfil_id,sector' });
+    .upsert({ perfil_id: uid, sector: sector, cargo: ROL_DEFAULT, permisos: permisos }, { onConflict: 'perfil_id,sector' });
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
   estado(uid, '✓ ' + (SECTOR_LBL[sector] || sector) + ' asignada como «solo visión». Ajustá el rol y los accesos abajo.', 'ok');
   await cargar();
 }
 
+// Al cambiar el rol se materializan las listas ver/editar (así el panel y la app
+// quedan idénticos). admin → ve y edita todo; lector → no edita; editor → conserva
+// lo que ya tenía. Un usuario sin listas (histórico) recién acá pasa a tenerlas.
 async function cambiarRol(uid, sector, rol){
   const u = USUARIOS.find(x => x.id === uid);
   const fila = u && (u.perfiles_sector || []).find(s => s.sector === sector);
   if (!fila) return;
-  const upd = { cargo: rol };
-  // Solo visión no edita nada: al pasar a lector, vaciar la lista de edición.
-  if (rol === 'lector') {
-    const permisos = Object.assign({}, fila.permisos || {}, { editar: [] });
-    upd.permisos = permisos;
-  }
-  const { error } = await sb.from('perfiles_sector').update(upd).eq('perfil_id', uid).eq('sector', sector);
+  const cat = (SECCIONES[sector] || []).map(s => s.id);
+  const sens = SENSIBLE_DEFAULT[sector] || new Set();
+  const prev = fila.permisos || {};
+  let ver = Array.isArray(prev.ver) ? prev.ver.slice() : (rol === 'admin' ? cat.slice() : cat.filter(id => !sens.has(id)));
+  if (rol === 'admin') ver = cat.slice(); // admin ve todo
+  const verSet = new Set(ver);
+  let editar;
+  if (rol === 'admin') editar = cat.filter(id => verSet.has(id));
+  else if (rol === 'lector') editar = [];
+  else editar = (Array.isArray(prev.editar) ? prev.editar : []).filter(id => verSet.has(id));
+  const permisos = syncFlagsPlan(sector, Object.assign({}, prev, { ver: ver, editar: editar }), verSet);
+  const { error } = await sb.from('perfiles_sector').update({ cargo: rol, permisos: permisos }).eq('perfil_id', uid).eq('sector', sector);
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
   estado(uid, '✓ Rol en ' + (SECTOR_LBL[sector] || sector) + ': ' + (ROL_LBL[rol] || rol) + '.', 'ok');
   await cargar();
