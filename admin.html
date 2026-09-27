@@ -82,7 +82,7 @@ const SECTOR_LBL = { fhcomercial:'Comercial 4H', labocomercial:'LABO', diseno:'D
 const CARGOS = {
   fhcomercial: ['miembro'], labocomercial: ['miembro'],
   diseno: ['coordinador','diseno','lectura','admin'],
-  planificacion: ['admin','coordinador','pm'],
+  planificacion: ['coordinador','pm','admin'],
   compras: ['miembro'], eerr: ['miembro'], logistica: ['miembro'],
 };
 
@@ -157,12 +157,12 @@ function tarjetaUsuario(u){
 
   const usados = sectores.map(s => s.sector);
   const disponibles = SECTORES.filter(s => usados.indexOf(s) < 0);
+  const opcionesCargo = (sec) => (CARGOS[sec] || ['miembro']).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
   const selSector = '<select id="sec-' + u.id + '" onchange="sugerirCargos(\'' + u.id + '\')">'
     + disponibles.map(s => '<option value="' + s + '">' + esc(SECTOR_LBL[s]) + '</option>').join('') + '</select>';
   const agregar = disponibles.length
     ? '<span class="agregar">' + selSector
-      + '<input type="text" id="cargo-' + u.id + '" list="cargos-' + u.id + '" placeholder="cargo" size="10" value="' + esc((CARGOS[disponibles[0]]||['miembro'])[0]) + '">'
-      + '<datalist id="cargos-' + u.id + '"></datalist>'
+      + '<select id="cargo-' + u.id + '" title="Tipo de usuario">' + opcionesCargo(disponibles[0]) + '</select>'
       + '<button onclick="agregarSector(\'' + u.id + '\')">+ sector</button></span>'
     : '';
 
@@ -188,10 +188,8 @@ function estado(uid, texto, tipo){
 
 function sugerirCargos(uid){
   const sec = document.getElementById('sec-' + uid).value;
-  const dl = document.getElementById('cargos-' + uid);
-  const inp = document.getElementById('cargo-' + uid);
-  dl.innerHTML = (CARGOS[sec] || []).map(c => '<option value="' + c + '">').join('');
-  inp.value = (CARGOS[sec] || ['miembro'])[0];
+  const selCargo = document.getElementById('cargo-' + uid);
+  if (selCargo) selCargo.innerHTML = (CARGOS[sec] || ['miembro']).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
 }
 
 async function toggleActivo(uid, valor){
