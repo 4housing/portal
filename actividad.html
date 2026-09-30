@@ -61,7 +61,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const SECTOR_LBL = { fhcomercial:'Comercial', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', eerr:'Gestión · EERR', logistica:'Logística' };
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = s => document.querySelector(s);
-let DIAS = 30;
+let DIAS = 30; // número de días hacia atrás, o 'hoy' para el día calendario en curso
 let USUARIOS_SECTOR = {}; // sector -> cantidad de usuarios asignados
 
 function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; }
@@ -82,9 +82,11 @@ async function iniciar(){
   cargar();
 }
 
+function inicioDeHoy(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); }
+
 async function cargar(){
   $('#main').innerHTML = controlesHTML() + '<p class="msg">Cargando actividad…</p>';
-  const desde = new Date(Date.now() - DIAS*86400000).toISOString();
+  const desde = DIAS==='hoy' ? inicioDeHoy() : new Date(Date.now() - DIAS*86400000).toISOString();
   const { data, error } = await sb.from('core_actividad').select('*').gte('fecha', desde).order('fecha', { ascending:false }).limit(20000);
   if(error){ $('#main').innerHTML = controlesHTML() + '<p class="msg">Error: '+esc(error.message)+'<br><span class="muted">¿Corriste el 081 (vista core_actividad)?</span></p>'; return; }
   render(data||[]);
@@ -92,6 +94,7 @@ async function cargar(){
 
 function controlesHTML(){
   return '<div class="controls"><span class="muted" style="font-size:.85rem;margin-right:.3rem">Período:</span>'
+    + '<button class="'+(DIAS==='hoy'?'on':'')+'" onclick="setDias(\'hoy\')">Hoy</button>'
     + [7,30,90].map(d=>'<button class="'+(d===DIAS?'on':'')+'" onclick="setDias('+d+')">'+d+' días</button>').join('')
     + '</div>';
 }
@@ -116,7 +119,7 @@ function render(rows){
   let h = controlesHTML();
   // KPIs
   h += '<div class="kpis">'
-    + kpi(total, 'movimientos en '+DIAS+' días')
+    + kpi(total, 'movimientos '+(DIAS==='hoy'?'hoy':'en '+DIAS+' días'))
     + kpi(topSector?(SECTOR_LBL[topSector]||topSector):'—', 'sector más activo')
     + kpi(usuariosActivos, 'usuarios con actividad')
     + '</div>';

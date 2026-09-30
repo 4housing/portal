@@ -1,18 +1,21 @@
 -- ============================================================================
 -- Portal 4housing — 081 · Vista consolidada de actividad (para indicadores)
 -- ============================================================================
--- Correr en el proyecto del PORTAL. Une en una sola vista las 4 fuentes de
+-- Correr en el proyecto del PORTAL. Une en una sola vista las fuentes de
 -- actividad que viven en este proyecto, normalizadas a: sector, fecha, usuario,
 -- accion, fuente. Alimenta el tablero portal/actividad.html.
 --
---   core_auditoria               → LABO + perfiles_sector (permisos)  [sector propio]
+--   core_auditoria               → LABO + perfiles_sector (permisos) + Compras
+--                                   (desde 091_auditoria_compras.sql)  [sector propio]
 --   planificacion_actividad_log  → Planificación
 --   diseno_historial_actividad   → Diseño
 --   audit_log                    → Comercial (fhcomercial)
 --
 -- security_invoker = true → respeta la RLS de cada tabla según quién consulta
--- (dirección ve todo; un usuario de un sector solo lo suyo). Compras/EERR viven
--- en otro proyecto Supabase, así que no entran acá.
+-- (dirección ve todo; un usuario de un sector solo lo suyo). Esta vista no
+-- necesita cambios cuando se suma un sector nuevo a core_auditoria (como
+-- Compras): ya lee de ahí sin filtrar por sector. EERR todavía no tiene
+-- auditoría propia.
 -- ============================================================================
 
 create or replace view public.core_actividad

@@ -7,9 +7,10 @@
 -- "log por app" (RLS: cada sector ve lo suyo) y como base del consolidado.
 --
 -- Alcance: LABO (vive en este proyecto) + perfiles_sector (cambios de permisos
--- del panel). COMPRAS y EERR viven en OTRO proyecto Supabase (aaqpzamcdxldhqyuqlgm),
--- así que su auditoría se corre allá con un archivo aparte (081). Comercial/Diseño/
--- Planificación ya tienen su propio registro.
+-- del panel). Comercial/Diseño/Planificación ya tienen su propio registro.
+-- COMPRAS vivía en otro proyecto Supabase (aaqp) cuando se escribió esto — desde
+-- la migración de septiembre 2026 ya está en este mismo proyecto (wcpk), y su
+-- auditoría se agrega en 091_auditoria_compras.sql. EERR sigue sin auditoría propia.
 -- Idempotente: se puede correr de nuevo.
 -- ============================================================================
 
