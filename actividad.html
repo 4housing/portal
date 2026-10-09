@@ -43,6 +43,13 @@
   .msg{color:var(--ink-soft);padding:2.5rem 0;text-align:center}
   .pill{font-family:var(--mono);font-size:.68rem;padding:.1rem .45rem;border-radius:99px;font-weight:700;background:var(--accent-soft);color:var(--accent-ink)}
   .badge{font-size:.68rem;padding:.05rem .4rem;border-radius:5px;font-weight:600}
+  tr.clk{cursor:pointer}
+  tr.clk:hover td{background:var(--accent-soft)}
+  tr.sel td{background:var(--accent-soft)}
+  tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  .kpi.clk{cursor:pointer}
+  .kpi.clk:hover{border-color:var(--accent)}
+  .chip{font:inherit;cursor:pointer;border-radius:99px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);padding:.2rem .6rem;font-size:.78rem;font-weight:600}
 </style>
 </head>
 <body>
@@ -61,10 +68,14 @@ const SUPABASE_ANON_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const SECTOR_LBL = { fhcomercial:'Comercial', labocomercial:'LABO', diseno:'Diseño', planificacion:'Planificación', compras:'Compras', eerr:'Gestión · EERR', logistica:'Logística' };
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = s => document.querySelector(s);
-let DIAS = 30;
-let USUARIOS_SECTOR = {}; // sector -> cantidad de usuarios asignados
+let PERIODO = 30;            // 'hoy' | 7 | 30 | 90
+let USUARIOS_SECTOR = {};    // sector -> cantidad de usuarios asignados
+let FILTRO = { sector:null, usuario:null, dia:null };   // filtros activos (drill-down)
+let ROWS = [];               // actividad del período en memoria (los filtros no re-consultan)
 
+function startOfTodayISO(){ const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); }
 function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; }
+function escAttr(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 function fmtFecha(iso){ try{ return new Date(iso).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
 
 async function iniciar(){
@@ -84,81 +95,122 @@ async function iniciar(){
 
 async function cargar(){
   $('#main').innerHTML = controlesHTML() + '<p class="msg">Cargando actividad…</p>';
-  const desde = new Date(Date.now() - DIAS*86400000).toISOString();
-  const { data, error } = await sb.from('core_actividad').select('*').gte('fecha', desde).order('fecha', { ascending:false }).limit(20000);
-  if(error){ $('#main').innerHTML = controlesHTML() + '<p class="msg">Error: '+esc(error.message)+'<br><span class="muted">¿Corriste el 081 (vista core_actividad)?</span></p>'; return; }
-  render(data||[]);
+  const desde = (PERIODO==='hoy') ? startOfTodayISO() : new Date(Date.now() - PERIODO*86400000).toISOString();
+  try{
+    ROWS = await fetchActividad(desde);
+  }catch(e){
+    $('#main').innerHTML = controlesHTML() + '<p class="msg">Error: '+esc(e.message||e)+'<br><span class="muted">¿Corriste el 081 (vista core_actividad)?</span></p>'; return;
+  }
+  render();
+}
+// Trae TODA la actividad del período paginando de a 1000 (PostgREST corta cada request en 1000;
+// por eso el contador se "trababa" en 1000 — un solo request con limit(20000) igual quedaba capado).
+async function fetchActividad(desde){
+  const PAGE=1000; let from=0, all=[];
+  for(;;){
+    const { data, error } = await sb.from('core_actividad').select('*').gte('fecha', desde).order('fecha', { ascending:false }).range(from, from+PAGE-1);
+    if(error) throw error;
+    const chunk = data||[]; all = all.concat(chunk);
+    if(chunk.length < PAGE) break;
+    from += PAGE;
+    if(from >= 300000) break;   // tope de seguridad
+  }
+  return all;
 }
 
+function periodoLabel(){ return PERIODO==='hoy' ? 'hoy' : (PERIODO+' días'); }
 function controlesHTML(){
-  return '<div class="controls"><span class="muted" style="font-size:.85rem;margin-right:.3rem">Período:</span>'
-    + [7,30,90].map(d=>'<button class="'+(d===DIAS?'on':'')+'" onclick="setDias('+d+')">'+d+' días</button>').join('')
+  const opts = [['hoy','Hoy'],[7,'7 días'],[30,'30 días'],[90,'90 días']];
+  let c = '<div class="controls"><span class="muted" style="font-size:.85rem;margin-right:.3rem">Período:</span>'
+    + opts.map(o=>'<button class="'+(o[0]===PERIODO?'on':'')+'" onclick="setPeriodo('+(typeof o[0]==='string'?("'"+o[0]+"'"):o[0])+')">'+o[1]+'</button>').join('')
     + '</div>';
+  const chips=[];
+  if(FILTRO.sector)  chips.push(chip('Sector: '+(SECTOR_LBL[FILTRO.sector]||FILTRO.sector), "setFiltro('sector',null)"));
+  if(FILTRO.usuario) chips.push(chip('Usuario: '+FILTRO.usuario, "setFiltro('usuario',null)"));
+  if(FILTRO.dia)     chips.push(chip('Día: '+FILTRO.dia.slice(8,10)+'/'+FILTRO.dia.slice(5,7), "setFiltro('dia',null)"));
+  if(chips.length) c += '<div class="controls" style="margin-top:-.5rem"><span class="muted" style="font-size:.85rem;margin-right:.3rem">Filtros:</span>'+chips.join('')+'<button onclick="limpiarFiltros()">Limpiar todo</button></div>';
+  return c;
 }
-function setDias(d){ DIAS=d; cargar(); }
+function chip(txt, onclk){ return '<button class="chip" onclick="'+onclk+'">'+esc(txt)+' ✕</button>'; }
+function setPeriodo(p){ PERIODO=p; cargar(); }
+function setFiltro(k,v){ FILTRO[k] = (FILTRO[k]===v) ? null : v; render(); }
+function limpiarFiltros(){ FILTRO={sector:null,usuario:null,dia:null}; render(); }
 
-function render(rows){
-  const porSector = {}, porDia = {}, porUsuario = {};
-  const activosSector = {}; // sector -> Set usuarios
-  rows.forEach(r => {
-    const s=r.sector||'—';
-    porSector[s]=(porSector[s]||0)+1;
-    (activosSector[s]=activosSector[s]||new Set()).add(r.usuario);
-    porUsuario[r.usuario]=(porUsuario[r.usuario]||0)+1;
-    const dia=(r.fecha||'').slice(0,10); if(dia) porDia[dia]=(porDia[dia]||0)+1;
+// Facetado: cada bloque se agrega sobre las filas filtradas por los OTROS filtros
+// (no por el propio), para poder seguir cambiando de valor dentro de ese facet.
+function render(){
+  const base = facet => ROWS.filter(r=>{
+    if(facet!=='sector'  && FILTRO.sector  && (r.sector||'—')!==FILTRO.sector) return false;
+    if(facet!=='usuario' && FILTRO.usuario && (r.usuario||'—')!==FILTRO.usuario) return false;
+    if(facet!=='dia'     && FILTRO.dia     && (r.fecha||'').slice(0,10)!==FILTRO.dia) return false;
+    return true;
   });
-  const total = rows.length;
-  const sectoresOrd = Object.keys(porSector).sort((a,b)=>porSector[b]-porSector[a]);
-  const topSector = sectoresOrd[0];
-  const usuariosActivos = new Set(rows.map(r=>r.usuario)).size;
-  const maxSec = Math.max(1, ...sectoresOrd.map(s=>porSector[s]));
+  const rows=base(null), rSector=base('sector'), rUser=base('usuario'), rDia=base('dia');
 
-  let h = controlesHTML();
-  // KPIs
+  const total=rows.length;
+  const usuariosActivos=new Set(rows.map(r=>r.usuario||'—')).size;
+
+  const porSector={}, activosSector={};
+  rSector.forEach(r=>{ const s=r.sector||'—'; porSector[s]=(porSector[s]||0)+1; (activosSector[s]=activosSector[s]||new Set()).add(r.usuario); });
+  const sectoresOrd=Object.keys(porSector).sort((a,b)=>porSector[b]-porSector[a]);
+  const topSector=sectoresOrd[0], maxSec=Math.max(1,...sectoresOrd.map(s=>porSector[s]));
+
+  const porUsuario={}; rUser.forEach(r=>{ const u=r.usuario||'—'; porUsuario[u]=(porUsuario[u]||0)+1; });
+  const usuariosOrd=Object.keys(porUsuario).sort((a,b)=>porUsuario[b]-porUsuario[a]);
+  const maxU=Math.max(1,...usuariosOrd.map(u=>porUsuario[u]));
+
+  const porDia={}; rDia.forEach(r=>{ const d=(r.fecha||'').slice(0,10); if(d) porDia[d]=(porDia[d]||0)+1; });
+  const diasOrd=Object.keys(porDia).sort(), maxDia=Math.max(1,...diasOrd.map(d=>porDia[d]));
+
+  let h=controlesHTML();
+  // KPIs — "movimientos" limpia los filtros; "sector más activo" filtra por ese sector.
   h += '<div class="kpis">'
-    + kpi(total, 'movimientos en '+DIAS+' días')
-    + kpi(topSector?(SECTOR_LBL[topSector]||topSector):'—', 'sector más activo')
+    + kpiClick(total, 'movimientos · '+periodoLabel(), (FILTRO.sector||FILTRO.usuario||FILTRO.dia)?'limpiarFiltros()':'')
+    + kpiClick(topSector?(SECTOR_LBL[topSector]||topSector):'—', 'sector más activo', topSector?("setFiltro('sector','"+escAttr(topSector)+"')"):'')
     + kpi(usuariosActivos, 'usuarios con actividad')
     + '</div>';
 
-  // Por sector + ratio
+  // Por sector (clickable)
   h += '<div class="card"><h2>Actividad por sector</h2><table><thead><tr><th>Sector</th><th>Movimientos</th><th></th><th>Usuarios</th><th>Activos</th><th>Ratio*</th></tr></thead><tbody>';
   sectoresOrd.forEach(s=>{
-    const mov=porSector[s], usr=USUARIOS_SECTOR[s]||0, act=(activosSector[s]||new Set()).size;
-    const ratio = usr? (mov/usr).toFixed(1) : '—';
-    h += '<tr><td><b>'+esc(SECTOR_LBL[s]||s)+'</b></td><td>'+mov+'</td>'
+    const mov=porSector[s], usr=USUARIOS_SECTOR[s]||0, act=(activosSector[s]||new Set()).size, ratio=usr?(mov/usr).toFixed(1):'—';
+    h += '<tr class="clk'+(FILTRO.sector===s?' sel':'')+'" onclick="setFiltro(\'sector\',\''+escAttr(s)+'\')"><td><b>'+esc(SECTOR_LBL[s]||s)+'</b></td><td>'+mov+'</td>'
        + '<td style="width:34%"><div class="bar-track"><div class="bar" style="width:'+Math.round(mov/maxSec*100)+'%"></div></div></td>'
        + '<td>'+usr+'</td><td>'+act+'</td><td><b>'+ratio+'</b></td></tr>';
   });
-  h += '</tbody></table><div class="muted" style="font-size:.72rem;margin-top:.5rem">*Ratio = movimientos ÷ usuarios asignados al sector (más alto = sector más intenso por persona).</div></div>';
+  if(!sectoresOrd.length) h += '<tr><td class="muted" colspan="6">Sin datos.</td></tr>';
+  h += '</tbody></table><div class="muted" style="font-size:.72rem;margin-top:.5rem">*Ratio = movimientos ÷ usuarios asignados al sector. Las fuentes no son comparables entre sí: Comercial registra auditoría completa (cada cambio); Diseño y Planificación solo los eventos que la app registra; LABO solo algunas tablas. Compras y EERR viven en otro proyecto Supabase y hoy no entran acá.</div></div>';
 
-  // Por día
-  const dias = Object.keys(porDia).sort();
-  const maxDia = Math.max(1, ...dias.map(d=>porDia[d]));
+  // Por usuario (clickable, completo)
+  h += '<div class="card"><h2>Actividad por usuario</h2><table><tbody>';
+  usuariosOrd.slice(0,100).forEach(u=>{
+    h += '<tr class="clk'+(FILTRO.usuario===u?' sel':'')+'" onclick="setFiltro(\'usuario\',\''+escAttr(u)+'\')"><td>'+esc(u)+'</td>'
+       + '<td style="width:45%"><div class="bar-track"><div class="bar" style="width:'+Math.round(porUsuario[u]/maxU*100)+'%"></div></div></td>'
+       + '<td style="width:60px;text-align:right"><b>'+porUsuario[u]+'</b></td></tr>';
+  });
+  if(!usuariosOrd.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
+  h += '</tbody></table>'+(usuariosOrd.length>100?'<div class="muted" style="font-size:.72rem;margin-top:.4rem">Mostrando 100 de '+usuariosOrd.length+'.</div>':'')+'</div>';
+
+  // Por día (clickable)
   h += '<div class="card"><h2>Actividad por día</h2><table><tbody>';
-  dias.forEach(d=>{ h += '<tr><td style="width:90px" class="muted">'+d.slice(8,10)+'/'+d.slice(5,7)+'</td>'
+  diasOrd.forEach(d=>{ h += '<tr class="clk'+(FILTRO.dia===d?' sel':'')+'" onclick="setFiltro(\'dia\',\''+d+'\')"><td style="width:90px" class="muted">'+d.slice(8,10)+'/'+d.slice(5,7)+'</td>'
      + '<td style="width:60%"><div class="bar-track"><div class="bar" style="width:'+Math.round(porDia[d]/maxDia*100)+'%"></div></div></td>'
      + '<td style="width:50px">'+porDia[d]+'</td></tr>'; });
-  if(!dias.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
+  if(!diasOrd.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
   h += '</tbody></table></div>';
 
-  // Top usuarios
-  const topU = Object.keys(porUsuario).sort((a,b)=>porUsuario[b]-porUsuario[a]).slice(0,10);
-  h += '<div class="card"><h2>Usuarios más activos</h2><table><tbody>';
-  topU.forEach(u=>{ h += '<tr><td>'+esc(u)+'</td><td style="width:60px;text-align:right"><b>'+porUsuario[u]+'</b></td></tr>'; });
-  if(!topU.length) h += '<tr><td class="muted">Sin datos.</td></tr>';
-  h += '</tbody></table></div>';
-
-  // Últimos movimientos
+  // Últimos movimientos (sobre el set filtrado)
   h += '<div class="card"><h2>Últimos movimientos</h2><table><thead><tr><th>Fecha</th><th>Sector</th><th>Usuario</th><th>Acción</th><th>Dónde</th></tr></thead><tbody>';
   rows.slice(0,50).forEach(r=>{ h += '<tr><td class="muted" style="white-space:nowrap">'+esc(fmtFecha(r.fecha))+'</td>'
      + '<td><span class="pill">'+esc(SECTOR_LBL[r.sector]||r.sector)+'</span></td>'
      + '<td>'+esc(r.usuario)+'</td><td>'+esc(r.accion||'—')+'</td><td class="muted">'+esc(r.fuente||'')+'</td></tr>'; });
+  if(!rows.length) h += '<tr><td class="muted" colspan="5">Sin movimientos con estos filtros.</td></tr>';
   h += '</tbody></table></div>';
 
   $('#main').innerHTML = h;
 }
 function kpi(n,l){ return '<div class="kpi"><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+function kpiClick(n,l,onclk){ return '<div class="kpi'+(onclk?' clk':'')+'"'+(onclk?' onclick="'+onclk+'"':'')+'><div class="n">'+esc(n)+'</div><div class="l">'+esc(l)+'</div></div>'; }
 
 iniciar();
 </script>
