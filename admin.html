@@ -181,6 +181,11 @@ const SECCIONES = {
     { id: 'cmv', label: 'Proyectos · CMV' }, { id: 'proy', label: 'Control Proyectos' },
     { id: 'dic', label: 'Diccionario' },
   ],
+  adminfin: [
+    { id: 'solicitudes', label: 'Solicitudes de pago' }, { id: 'cuy', label: 'Contabilidad UY' },
+    { id: 'tareas', label: 'Tareas (las propias · editar = crear y asignar)' },
+    { id: 'tareas_todas', label: 'Tareas · ver todas (supervisión)' },
+  ],
   logistica: [], // sin app publicada todavía
 };
 
@@ -189,6 +194,7 @@ const SECCIONES = {
 const SENSIBLE_DEFAULT = {
   planificacion: new Set(['personal', 'traslados', 'actividad']),
   labocomercial: new Set(['actividad']),
+  adminfin: new Set(['tareas_todas']), // supervisión de tareas: se habilita a mano
 };
 
 // Acceso efectivo (para pintar la matriz) a partir del rol + permisos guardados.
@@ -249,7 +255,7 @@ function render(){
         + 'Los roles dependen de la app: la mayoría usa <b>Admin</b> / <b>Miembro con edición</b> / <b>Solo visión</b>; Diseño y Planificación además tienen <b>Coordinación</b> (y Planificación, <b>PM</b>). '
         + '<b>Dirección</b> es control total en todas las apps. '
         + 'Los cambios rigen desde la próxima carga de cada app. '
-        + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial y LABO</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos). <b>Compras</b> y <b>EERR</b> se pueden asignar pero todavía no aplican los permisos (se conectan en una próxima etapa).</i></div>';
+        + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial, LABO y Administración y Finanzas</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos). <b>Compras</b> y <b>EERR</b> se pueden asignar pero todavía no aplican los permisos (se conectan en una próxima etapa).</i></div>';
   h += '<div class="buscador"><input id="buscarUsuario" type="search" placeholder="🔎 Buscar usuario por nombre o email…" value="' + esc(filtroUsuarios) + '" oninput="onBuscar(this.value)" autocomplete="off"></div>';
   h += '<div id="lista"></div>';
   $main.innerHTML = h;
