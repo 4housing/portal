@@ -186,6 +186,9 @@ const SECCIONES = {
     { id: 'tareas', label: 'Tareas (las propias · editar = crear y asignar)' },
     { id: 'tareas_todas', label: 'Tareas · ver todas (supervisión)' },
   ],
+  rrhh: [
+    { id: 'importar', label: 'Importar informes (sueldos)' },
+  ],
   logistica: [], // sin app publicada todavía
 };
 
@@ -196,6 +199,7 @@ const SENSIBLE_DEFAULT = {
   labocomercial: new Set(['actividad']),
   adminfin: new Set(['tareas_todas']), // supervisión de tareas: se habilita a mano
   eerr: new Set(['costeos']), // resultado real por proyecto: solo a quien Dirección se lo habilite
+  rrhh: new Set(['importar']), // sueldos y liquidaciones: solo a quien Dirección se lo habilite
 };
 
 // Acceso efectivo (para pintar la matriz) a partir del rol + permisos guardados.
@@ -211,6 +215,8 @@ function accesoEfectivo(sector, cargo, permisos){
     ver = cat.map(s => s.id);
     // EERR: sin listas guardadas, la app no muestra Costeos (sensible); la matriz refleja lo mismo.
     if (sector === 'eerr') ver = ver.filter(id => !SENSIBLE_DEFAULT.eerr.has(id));
+    // RRHH: sin listas guardadas, la app no muestra Importar informes (sueldos); la matriz refleja lo mismo.
+    if (sector === 'rrhh') ver = ver.filter(id => !SENSIBLE_DEFAULT.rrhh.has(id));
     if (sector === 'planificacion') {
       if (perm.ve_sueldos !== true) ver = ver.filter(id => id !== 'personal');
       if (perm.ve_neuquen === false) ver = ver.filter(id => id !== 'neuquen');
