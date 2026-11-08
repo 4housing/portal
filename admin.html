@@ -217,6 +217,9 @@ function accesoEfectivo(sector, cargo, permisos){
     if (sector === 'eerr') ver = ver.filter(id => !SENSIBLE_DEFAULT.eerr.has(id));
     // RRHH: sin listas guardadas, la app no muestra Importar informes (sueldos); la matriz refleja lo mismo.
     if (sector === 'rrhh') ver = ver.filter(id => !SENSIBLE_DEFAULT.rrhh.has(id));
+    // Administración y Finanzas: sin listas guardadas, la app y la base (adminfin_puede_ver) NO dan 'tareas_todas'; la matriz
+    // tampoco debe mostrarla tildada (si no, al tildar cualquier otra cosa se guardaría 'ver todas' sin querer).
+    if (sector === 'adminfin') ver = ver.filter(id => !SENSIBLE_DEFAULT.adminfin.has(id));
     if (sector === 'planificacion') {
       if (perm.ve_sueldos !== true) ver = ver.filter(id => id !== 'personal');
       if (perm.ve_neuquen === false) ver = ver.filter(id => id !== 'neuquen');
