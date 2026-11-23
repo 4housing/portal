@@ -1,4 +1,8 @@
 -- ============================================================================
+-- NOTA (repo público): los mails y nombres reales se reemplazaron por marcadores
+-- (personaNN@ejemplo.invalid / <nombre>). Esta migración YA se aplicó con los datos
+-- reales; re-correrla así no hace nada (no matchea ningún perfil). Para re-usarla,
+-- completar a mano los mails en el SQL Editor, sin commitearlos.
 -- Migración Diseño — 130 · Sector y cargo para el equipo de diseño
 -- ============================================================================
 -- ⚠ Correr en el proyecto del PORTAL (wcpkpwxhqdcdljfwzcmy).
@@ -19,15 +23,15 @@
 -- A · Activar + nombre canónico + sector/cargo (upsert)
 with equipo (email, nombre, cargo) as (
   values
-    ('alejozuchelli@4housing.com.ar',    'Alejo Zuchelli',     'diseno'),
-    ('anabustillo@4housing.com.ar',      'Ana Julia Bustillo', 'diseno'),
-    ('emilianaalvarez@4housing.com.ar',  'Emiliana Alvarez',   'diseno'),
-    ('ileanacallero@4housing.com.ar',    'Ileana Callero',     'coordinador'),
-    ('juancallero@4housing.com.ar',      'Juan Callero',       'diseno'),
-    ('milagroscortinas@4housing.com.ar', 'Milagros Cortinas',  'diseno'),
-    ('nicolaskomina@4housing.com.ar',    'Nicolas Komina',     'diseno'),
-    ('nicolasmendoza@4housing.com.ar',   'Nicolas Mendoza',    'diseno'),
-    ('pablospinetto@4housing.com.ar',    'Pablo Spinetto',     'coordinador')
+    ('persona08@ejemplo.invalid',    '<nombre>',     'diseno'),
+    ('persona09@ejemplo.invalid',      '<nombre>', 'diseno'),
+    ('persona10@ejemplo.invalid',  '<nombre>',   'diseno'),
+    ('persona11@ejemplo.invalid',    '<nombre>',     'coordinador'),
+    ('persona12@ejemplo.invalid',      '<nombre>',       'diseno'),
+    ('persona13@ejemplo.invalid', '<nombre>',  'diseno'),
+    ('persona06@ejemplo.invalid',    '<nombre>',     'diseno'),
+    ('persona14@ejemplo.invalid',   '<nombre>',    'diseno'),
+    ('persona01@ejemplo.invalid',    '<nombre>',     'coordinador')
 ),
 act as (
   update public.perfiles p
@@ -47,15 +51,15 @@ on conflict (perfil_id, sector) do update
 -- B · Verificación: quién quedó asignado y quién falta (todavía no logueó)
 with equipo (email, cargo_esperado) as (
   values
-    ('alejozuchelli@4housing.com.ar',    'diseno'),
-    ('anabustillo@4housing.com.ar',      'diseno'),
-    ('emilianaalvarez@4housing.com.ar',  'diseno'),
-    ('ileanacallero@4housing.com.ar',    'coordinador'),
-    ('juancallero@4housing.com.ar',      'diseno'),
-    ('milagroscortinas@4housing.com.ar', 'diseno'),
-    ('nicolaskomina@4housing.com.ar',    'diseno'),
-    ('nicolasmendoza@4housing.com.ar',   'diseno'),
-    ('pablospinetto@4housing.com.ar',    'coordinador')
+    ('persona08@ejemplo.invalid',    '<nombre>'),
+    ('persona09@ejemplo.invalid',      '<nombre>'),
+    ('persona10@ejemplo.invalid',  '<nombre>'),
+    ('persona11@ejemplo.invalid',    '<nombre>'),
+    ('persona12@ejemplo.invalid',      '<nombre>'),
+    ('persona13@ejemplo.invalid', '<nombre>'),
+    ('persona06@ejemplo.invalid',    '<nombre>'),
+    ('persona14@ejemplo.invalid',   '<nombre>'),
+    ('persona01@ejemplo.invalid',    '<nombre>')
 )
 select e.email,
        e.cargo_esperado,

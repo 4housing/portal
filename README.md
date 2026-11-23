@@ -52,7 +52,7 @@ ya te creó el perfil. En el SQL Editor:
 ```sql
 update public.perfiles
    set es_direccion = true, activo = true
- where email = 'pablospinetto@4housing.com.ar';
+ where email = 'persona01@ejemplo.invalid';
 ```
 
 ### 3 · Habilitar la URL del portal en Auth

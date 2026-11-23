@@ -1,4 +1,8 @@
 -- ============================================================================
+-- NOTA (repo público): los mails y nombres reales se reemplazaron por marcadores
+-- (personaNN@ejemplo.invalid / <nombre>). Esta migración YA se aplicó con los datos
+-- reales; re-correrla así no hace nada (no matchea ningún perfil). Para re-usarla,
+-- completar a mano los mails en el SQL Editor, sin commitearlos.
 -- Migración LABO — 230 · Sector labocomercial para el equipo
 -- ============================================================================
 -- ⚠ Correr en el proyecto del PORTAL. IDEMPOTENTE (re-correr las veces que
@@ -7,7 +11,7 @@
 --
 -- LABO no tenía roles internos (todos operan todo) → cargo 'miembro' parejo.
 --
--- NICOLÁS TOVO (vendedor externo, solo cotiza LABO): pendiente de que Azure
+-- VENDEDOR EXTERNO (, solo cotiza LABO): pendiente de que Azure
 -- lo habilite (invitación B2B guest con su Gmail, o cuenta @4housing).
 -- Cuando exista su cuenta y haya logueado una vez al portal, descomentar su
 -- línea (con el email con el que haya quedado registrado) y re-correr.
@@ -17,10 +21,10 @@
 
 with equipo (email, cargo) as (
   values
-    ('hectorbermudez@4housing.com.ar', 'miembro'),
-    ('victorialopez@4housing.com.ar',  'miembro'),
-    ('pablospinetto@4housing.com.ar',  'miembro')
-    -- ,('nicolastovo@gmail.com',       'miembro')  -- ← descomentar cuando su cuenta exista
+    ('persona26@ejemplo.invalid', 'miembro'),
+    ('persona31@ejemplo.invalid',  'miembro'),
+    ('persona01@ejemplo.invalid',  'miembro')
+    -- ,('persona32@ejemplo.invalid',       'miembro')  -- ← descomentar cuando su cuenta exista
 )
 insert into public.perfiles_sector (perfil_id, sector, cargo)
 select p.id, 'labocomercial'::public.sector_portal, e.cargo
@@ -32,10 +36,10 @@ on conflict (perfil_id, sector) do update
 -- Verificación
 with equipo (email) as (
   values
-    ('hectorbermudez@4housing.com.ar'),
-    ('victorialopez@4housing.com.ar'),
-    ('pablospinetto@4housing.com.ar'),
-    ('nicolastovo@gmail.com')
+    ('persona26@ejemplo.invalid'),
+    ('persona31@ejemplo.invalid'),
+    ('persona01@ejemplo.invalid'),
+    ('persona32@ejemplo.invalid')
 )
 select e.email,
        case

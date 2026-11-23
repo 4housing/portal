@@ -1,10 +1,14 @@
 -- ============================================================================
--- Migración Planificación — 340 · Alta de Matías Formica (acceso restringido)
+-- NOTA (repo público): los mails y nombres reales se reemplazaron por marcadores
+-- (personaNN@ejemplo.invalid / <nombre>). Esta migración YA se aplicó con los datos
+-- reales; re-correrla así no hace nada (no matchea ningún perfil). Para re-usarla,
+-- completar a mano los mails en el SQL Editor, sin commitearlos.
+-- Migración Planificación — 340 · Alta de un usuario (acceso restringido)
 -- ============================================================================
 -- ⚠ Correr en el proyecto del PORTAL. IDEMPOTENTE (re-correr las veces que
 -- haga falta; también sirve para ajustar sus permisos editando y re-corriendo).
 --
--- PRE-REQUISITO: matiasformica@4housing.com.ar debe tener cuenta en el portal.
+-- PRE-REQUISITO: persona07@ejemplo.invalid debe tener cuenta en el portal.
 -- Si todavía no la tiene, pre-crearla en el dashboard de Supabase (proyecto del
 -- portal): Authentication → Users → Add user → Create new user, con Auto Confirm.
 -- Recién después correr este script.
@@ -21,7 +25,7 @@
 update public.perfiles
    set activo = true,
        es_direccion = false
- where email = 'matiasformica@4housing.com.ar';
+ where email = 'persona07@ejemplo.invalid';
 
 -- Asignar/ajustar el sector planificación con sus permisos
 insert into public.perfiles_sector (perfil_id, sector, cargo, permisos)
@@ -30,7 +34,7 @@ select p.id,
        'coordinador',
        '{"ve_sueldos": false, "ve_neuquen": false}'::jsonb
   from public.perfiles p
- where p.email = 'matiasformica@4housing.com.ar'
+ where p.email = 'persona07@ejemplo.invalid'
 on conflict (perfil_id, sector) do update
    set cargo = excluded.cargo,
        permisos = excluded.permisos;
@@ -45,7 +49,7 @@ select e.email,
               || case when coalesce((ps.permisos->>'ve_neuquen')::boolean,true)  then ' · ve Neuquén'  else ' · sin Neuquén'  end
               || case when p.es_direccion then ' · DIRECCIÓN(admin)' else '' end
        end as estado
-  from (values ('matiasformica@4housing.com.ar')) as e(email)
+  from (values ('persona07@ejemplo.invalid')) as e(email)
   left join public.perfiles p on p.email = e.email
   left join public.perfiles_sector ps
          on ps.perfil_id = p.id and ps.sector = 'planificacion';
