@@ -70,6 +70,11 @@
   .mx-row input{margin:0;cursor:pointer;}
   .mx-row input:disabled{cursor:not-allowed;opacity:.4;}
   .mx-note{font-size:.75rem;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:.4rem .6rem;}
+  .mx-flag{margin-top:.45rem;font-size:.76rem;background:var(--paper);border:1px dashed var(--warn);border-radius:6px;padding:.35rem .55rem;}
+  .mx-flag label{display:flex;gap:.45rem;align-items:flex-start;cursor:pointer;}
+  .mx-flag input{margin-top:.15rem;}
+  .mx-flag input:disabled{cursor:not-allowed;opacity:.4;}
+  .mx-flag small{display:block;color:var(--ink-faint);}
   .u-flags .dir-on{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent);font-weight:700;}
   .agregar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.7rem;font-size:.8rem;color:var(--ink-soft);}
   .agregar-hint{font-size:.72rem;color:var(--ink-faint);}
@@ -320,12 +325,24 @@ function bloqueSector(u, s){
       + '</div>';
   }
 
+  // LABO · permiso explícito para el maestro de costos. NO viene con el rol ni con ser
+  // dirección: se tilda a mano. La base lo exige (labocomercial_edita_costos()).
+  let flags = '';
+  if (s.sector === 'labocomercial') {
+    const ec = !!(s.permisos && s.permisos.edita_costos === true);
+    flags = '<div class="mx-flag"><label><input type="checkbox" ' + (ec ? 'checked' : '')
+      + (esLector && !dir ? ' disabled title="Solo visión no puede editar costos"' : '')
+      + ' onchange="toggleEditaCostos(\'' + u.id + '\',this.checked)">'
+      + '<span><b>Edita costos</b><small>Maestro de costos y precios del vendedor externo. Sensible: tildar solo a quien corresponda.</small></span></label></div>';
+  }
+
   return '<div class="sec-block">'
     + '<div class="sec-head"><b>' + esc(SECTOR_LBL[s.sector] || s.sector) + '</b>'
     +   '<select title="Rol en esta app" ' + (dir ? 'disabled' : '') + ' onchange="cambiarRol(\'' + u.id + '\',\'' + s.sector + '\',this.value)">' + opcionesRol(s.sector, rol) + '</select>'
     +   '<button class="btn-quitar" title="Quitar app" onclick="quitarSector(\'' + u.id + '\', \'' + s.sector + '\')">✕ quitar</button>'
     + '</div>'
     + matriz
+    + flags
     + '</div>';
 }
 
@@ -443,6 +460,18 @@ async function toggleAcceso(uid, sector, secId, tipo, valor){
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
   const lbl = ((SECCIONES[sector] || []).find(s => s.id === secId) || {}).label || secId;
   estado(uid, '✓ ' + lbl + ' — ' + (tipo === 'ver' ? 'Ver' : 'Editar') + ': ' + (valor ? 'sí' : 'no') + '.', 'ok');
+  await cargar();
+}
+
+async function toggleEditaCostos(uid, valor){
+  const u = USUARIOS.find(x => x.id === uid);
+  const fila = u && (u.perfiles_sector || []).find(s => s.sector === 'labocomercial');
+  if (!fila) return;
+  if (valor && !confirm('«Edita costos» deja modificar el maestro de costos de LABO y los precios con los que cotiza el vendedor externo. ¿Habilitarlo para ' + (u.nombre || u.email) + '?')) { await cargar(); return; }
+  const permisos = Object.assign({}, fila.permisos || {}, { edita_costos: !!valor });
+  const { error } = await sb.from('perfiles_sector').update({ permisos: permisos }).eq('perfil_id', uid).eq('sector', 'labocomercial');
+  if (error) return estado(uid, 'Error: ' + error.message, 'err');
+  estado(uid, '✓ LABO — Edita costos: ' + (valor ? 'sí' : 'no') + '.', 'ok');
   await cargar();
 }
 
