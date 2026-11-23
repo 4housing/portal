@@ -212,4 +212,4 @@ on conflict (id) do nothing;
 -- ---------------------------------------------------------------------------
 -- update public.perfiles
 --    set es_direccion = true, activo = true
---  where email = 'pablospinetto@4housing.com.ar';
+--  where email = 'persona01@ejemplo.invalid';

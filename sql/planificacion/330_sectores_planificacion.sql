@@ -1,4 +1,8 @@
 -- ============================================================================
+-- NOTA (repo público): los mails y nombres reales se reemplazaron por marcadores
+-- (personaNN@ejemplo.invalid / <nombre>). Esta migración YA se aplicó con los datos
+-- reales; re-correrla así no hace nada (no matchea ningún perfil). Para re-usarla,
+-- completar a mano los mails en el SQL Editor, sin commitearlos.
 -- Migración Planificación — 330 · Sector y cargo para el equipo
 -- ============================================================================
 -- ⚠ Correr en el proyecto del PORTAL. IDEMPOTENTE (re-correr las veces que
@@ -19,12 +23,12 @@
 
 with equipo (email, cargo, permisos) as (
   values
-    ('fabianarubio@4housing.com.ar',   'pm',          '{}'::jsonb),
-    ('ignaciosanchez@4housing.com.ar', 'coordinador', '{}'::jsonb),
-    ('leandrochinni@4housing.com.ar',  'coordinador', '{}'::jsonb),
-    ('micaela@4housing.com.ar',        'admin',       '{"ve_sueldos": true}'::jsonb),
-    ('nicolaskomina@4housing.com.ar',  'coordinador', '{}'::jsonb),
-    ('pablospinetto@4housing.com.ar',  'admin',       '{"ve_sueldos": true}'::jsonb)
+    ('persona02@ejemplo.invalid',   'pm',          '{}'::jsonb),
+    ('persona03@ejemplo.invalid', 'coordinador', '{}'::jsonb),
+    ('persona04@ejemplo.invalid',  'coordinador', '{}'::jsonb),
+    ('persona05@ejemplo.invalid',        'admin',       '{"ve_sueldos": true}'::jsonb),
+    ('persona06@ejemplo.invalid',  'coordinador', '{}'::jsonb),
+    ('persona01@ejemplo.invalid',  'admin',       '{"ve_sueldos": true}'::jsonb)
 )
 insert into public.perfiles_sector (perfil_id, sector, cargo, permisos)
 select p.id, 'planificacion'::public.sector_portal, e.cargo, e.permisos
@@ -37,16 +41,16 @@ on conflict (perfil_id, sector) do update
 -- Activar a los pre-creados que sigan inactivos
 update public.perfiles set activo = true
  where email in (
-   'fabianarubio@4housing.com.ar','ignaciosanchez@4housing.com.ar',
-   'leandrochinni@4housing.com.ar','micaela@4housing.com.ar',
-   'nicolaskomina@4housing.com.ar','pablospinetto@4housing.com.ar');
+   'persona02@ejemplo.invalid','persona03@ejemplo.invalid',
+   'persona04@ejemplo.invalid','persona05@ejemplo.invalid',
+   'persona06@ejemplo.invalid','persona01@ejemplo.invalid');
 
 -- Verificación
 with equipo (email) as (
   values
-    ('fabianarubio@4housing.com.ar'),('ignaciosanchez@4housing.com.ar'),
-    ('leandrochinni@4housing.com.ar'),('micaela@4housing.com.ar'),
-    ('nicolaskomina@4housing.com.ar'),('pablospinetto@4housing.com.ar')
+    ('persona02@ejemplo.invalid'),('persona03@ejemplo.invalid'),
+    ('persona04@ejemplo.invalid'),('persona05@ejemplo.invalid'),
+    ('persona06@ejemplo.invalid'),('persona01@ejemplo.invalid')
 )
 select e.email,
        case

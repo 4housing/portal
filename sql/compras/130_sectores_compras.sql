@@ -1,4 +1,8 @@
 -- ============================================================================
+-- NOTA (repo público): los mails y nombres reales se reemplazaron por marcadores
+-- (personaNN@ejemplo.invalid / <nombre>). Esta migración YA se aplicó con los datos
+-- reales; re-correrla así no hace nada (no matchea ningún perfil). Para re-usarla,
+-- completar a mano los mails en el SQL Editor, sin commitearlos.
 -- Portal 4housing — Compras · 130 · Asignación de sector 'compras' a los usuarios
 -- ============================================================================
 -- Activa (activo=true) y asigna el sector 'compras' a los usuarios reales de la
@@ -17,33 +21,33 @@
 
 -- Lista de emails del sector compras (27 reales)
 with compras_emails(email) as (values
-  ('administracion@4housing.com.ar'),
-  ('agustinarodriguez@4housing.com.ar'),
-  ('alejozucchelli@4housing.com.ar'),
-  ('anabustillo@4housing.com.ar'),
-  ('andrealiendro@4housing.com.ar'),
-  ('camiladimeo@4housing.com.ar'),
-  ('daianamartin@4housing.com.ar'),
-  ('depositos@4housing.com.ar'),
-  ('emilianaalvarez@4housing.com.ar'),
-  ('ezequielbosco@4housing.com.ar'),
-  ('fabianarubio@4housing.com.ar'),
-  ('facturacion@4housing.com.ar'),
-  ('gonzalopalacios@4housing.com.ar'),
-  ('gustavopedretti@4housing.com.ar'),
-  ('hectorbermudez@4housing.com.ar'),
-  ('ignaciosanchez@4housing.com.ar'),
-  ('ileanacallero@4housing.com.ar'),
-  ('ivangaray@4housing.com.ar'),
-  ('juancallero@4housing.com.ar'),
-  ('leandroseoane@4housing.com.ar'),
-  ('micaela@4housing.com.ar'),
-  ('milagroscortinas@4housing.com.ar'),
-  ('nicolaskomina@4housing.com.ar'),
-  ('nicolasmendoza@4housing.com.ar'),
-  ('pablospinetto@4housing.com.ar'),
-  ('valentinaquiencke@4housing.com.ar'),
-  ('victorialopezaybar@4housing.com.ar')
+  ('persona15@ejemplo.invalid'),
+  ('persona16@ejemplo.invalid'),
+  ('persona17@ejemplo.invalid'),
+  ('persona09@ejemplo.invalid'),
+  ('persona18@ejemplo.invalid'),
+  ('persona19@ejemplo.invalid'),
+  ('persona20@ejemplo.invalid'),
+  ('persona21@ejemplo.invalid'),
+  ('persona10@ejemplo.invalid'),
+  ('persona22@ejemplo.invalid'),
+  ('persona02@ejemplo.invalid'),
+  ('persona23@ejemplo.invalid'),
+  ('persona24@ejemplo.invalid'),
+  ('persona25@ejemplo.invalid'),
+  ('persona26@ejemplo.invalid'),
+  ('persona03@ejemplo.invalid'),
+  ('persona11@ejemplo.invalid'),
+  ('persona27@ejemplo.invalid'),
+  ('persona12@ejemplo.invalid'),
+  ('persona28@ejemplo.invalid'),
+  ('persona05@ejemplo.invalid'),
+  ('persona13@ejemplo.invalid'),
+  ('persona06@ejemplo.invalid'),
+  ('persona14@ejemplo.invalid'),
+  ('persona01@ejemplo.invalid'),
+  ('persona29@ejemplo.invalid'),
+  ('persona30@ejemplo.invalid')
 )
 -- 1) activar los perfiles que existan y estén inactivos
 , activados as (
