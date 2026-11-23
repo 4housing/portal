@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Autorizar acceso · Portal 4housing</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* Mismos tokens que portal/index.html */
+  :root{
+    --bg:#f5f4f1; --paper:#ffffff; --ink:#20262e; --ink-soft:#5b646e; --ink-faint:#8b939c;
+    --line:#dfe2e6; --accent:#235a8f; --accent-soft:#e6eef6; --accent-ink:#12395e;
+    --ok:#1a7a45; --warn:#9a5a12; --warn-soft:#f7efe0;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14181d; --paper:#1b2128; --ink:#e8ebee; --ink-soft:#a4adb6; --ink-faint:#6e7883;
+      --line:#2c343d; --accent:#7bafe0; --accent-soft:#1e3349; --accent-ink:#bcdcff;
+      --ok:#5fc98d; --warn:#e0a352; --warn-soft:#3a2d15;
+    }
+  }
+  *{box-sizing:border-box;margin:0;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;min-height:100vh;}
+  .wrap{max-width:880px;margin:0 auto;padding:2rem 1rem 4rem;}
+
+  button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:.5rem 1rem;}
+  button:hover{border-color:var(--accent);}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  button:disabled{opacity:.6;cursor:default;}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;padding:.65rem 1.3rem;display:inline-flex;align-items:center;gap:.6rem;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{border:none;background:none;color:var(--ink-soft);padding:.3rem .5rem;font-size:.83rem;}
+  .btn-ghost:hover{color:var(--ink);}
+
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:2.2rem;max-width:480px;margin:8vh auto 0;}
+  .card.center{text-align:center;}
+  .card h2{font-size:1.2rem;margin-bottom:.6rem;}
+  .card p{color:var(--ink-soft);font-size:.92rem;margin-bottom:1.2rem;}
+  .card .fine{font-size:.78rem;color:var(--ink-faint);margin:1.2rem 0 0;}
+  .tag{font-family:var(--mono);font-size:.7rem;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:.05rem .4rem;letter-spacing:.06em;}
+
+  dl{border-top:1px solid var(--line);margin:0 0 1.2rem;}
+  dl div{display:flex;gap:1rem;padding:.55rem 0;border-bottom:1px solid var(--line);font-size:.88rem;}
+  dt{flex:none;width:7.5rem;color:var(--ink-faint);}
+  dd{margin:0;min-width:0;overflow-wrap:anywhere;}
+  dd code{font-family:var(--mono);font-size:.82em;}
+
+  .notice{background:var(--warn-soft);border:1px solid var(--warn);border-radius:8px;padding:.85rem 1rem;font-size:.86rem;margin-bottom:1.3rem;}
+  .acciones{display:flex;gap:.7rem;justify-content:flex-end;flex-wrap:wrap;}
+  .pie{display:flex;justify-content:space-between;align-items:center;margin-top:1.2rem;font-size:.8rem;color:var(--ink-faint);gap:.5rem;flex-wrap:wrap;}
+  .msg{color:var(--ink-soft);font-size:.9rem;padding:2rem 0;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main id="main"><p class="msg">Cargando…</p></main>
+</div>
+
+<script>
+/* ==========================================================================
+   Página de aprobación del servidor OAuth 2.1 de Supabase (conector de Claude
+   y otros clientes OAuth). Supabase Auth redirige acá con ?authorization_id=…
+   (Authentication → OAuth Server → Authorization Path = /oauth/consent).
+
+   Flujo:
+     1. Sin sesión → login Microsoft (mismo proveedor que el portal) y vuelta
+        a esta misma URL, conservando authorization_id.
+     2. Con sesión → perfiles.activo debe ser true; si no, no se puede aprobar.
+     3. getAuthorizationDetails → si ya había consentimiento previo, Supabase
+        devuelve redirect_url directo; si no, se muestra Aprobar / Rechazar.
+     4. approve/denyAuthorization → redirige al redirect_url que da Supabase.
+
+   El token que recibe el cliente tiene los mismos permisos que el usuario
+   (la beta no tiene scopes): la autorización real la hace la RLS.
+   Misma config pública que portal/index.html (publishable key: pública).
+   ========================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'https://wcpkpwxhqdcdljfwzcmy.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf',
+  PORTAL_URL: '/portal/',
+};
+
+const $main = document.getElementById('main');
+let sb = null;
+
+function esc(s){ const d=document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+/* Supabase arma la URL como Site URL + Authorization Path. Con el Site URL
+   terminado en "/" queda ".../portal//oauth/consent". Si GitHub Pages la sirve,
+   normalizamos la barra doble para que la vuelta del login sea una URL limpia
+   (la que tiene que estar en Redirect URLs). */
+(function normalizarRuta(){
+  const limpio = window.location.pathname.replace(/\/{2,}/g, '/');
+  if (limpio !== window.location.pathname) {
+    history.replaceState(null, '', limpio + window.location.search + window.location.hash);
+  }
+})();
+
+const authorizationId = new URLSearchParams(window.location.search).get('authorization_id');
+
+/* URL de vuelta tras el login: esta página + authorization_id, sin hash. */
+function urlDeVuelta(){
+  return window.location.origin + window.location.pathname +
+    '?authorization_id=' + encodeURIComponent(authorizationId);
+}
+
+function irA(url){
+  if (!url) { vistaError('Supabase no devolvió una URL de retorno.'); return; }
+  window.location.assign(url);
+}
+
+function vistaError(texto){
+  $main.innerHTML = `
+    <div class="card center">
+      <h2>No se pudo completar la autorización</h2>
+      <p>${esc(texto)}</p>
+      <a href="${CONFIG.PORTAL_URL}"><button>Ir al portal</button></a>
+    </div>`;
+}
+
+function vistaLogin(){
+  $main.innerHTML = `
+    <div class="card center">
+      <h2>Autorizar acceso <span class="tag">PORTAL</span></h2>
+      <p>Una aplicación pide acceso a las apps de 4housing en tu nombre.
+      Primero ingresá con tu cuenta Microsoft de la organización.</p>
+      <button class="btn-primary" id="btn-ms">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="0" y="0" width="7.4" height="7.4" fill="#f25022"/><rect x="8.6" y="0" width="7.4" height="7.4" fill="#7fba00"/><rect x="0" y="8.6" width="7.4" height="7.4" fill="#00a4ef"/><rect x="8.6" y="8.6" width="7.4" height="7.4" fill="#ffb900"/></svg>
+        Ingresar con Microsoft
+      </button>
+      <p class="fine">Solo cuentas del tenant de 4housing.</p>
+    </div>`;
+  document.getElementById('btn-ms').addEventListener('click', async () => {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'azure',
+      options: { scopes: 'openid profile email', redirectTo: urlDeVuelta() }
+    });
+    if (error) vistaError('No se pudo iniciar el login: ' + error.message);
+  });
+}
+
+/* Cuenta inactiva o sin perfil: no se aprueba. Se ofrece rechazar para que el
+   cliente reciba la respuesta y no quede colgado. */
+function vistaInactivo(perfil, email){
+  $main.innerHTML = `
+    <div class="card center">
+      <h2>Tu cuenta no está habilitada</h2>
+      <p>${esc(perfil?.nombre || email || '')}${(perfil?.nombre || email) ? ': ' : ''}tu cuenta del portal
+      no está activa, así que no puede autorizar accesos. Pedile a dirección que la habilite.</p>
+      <div class="acciones" style="justify-content:center">
+        <button id="btn-rechazar">Rechazar el pedido</button>
+        <button class="btn-ghost" id="btn-otra">Usar otra cuenta</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-rechazar').addEventListener('click', rechazar);
+  document.getElementById('btn-otra').addEventListener('click', otraCuenta);
+}
+
+function vistaConsentimiento(det, perfil, email){
+  const cliente = det.client || {};
+  const nombreCliente = cliente.name || cliente.client_name || 'Aplicación sin nombre';
+  const sitio = cliente.uri || cliente.client_uri || '';
+  const scopes = (det.scope || '').trim();
+
+  $main.innerHTML = `
+    <div class="card">
+      <h2>¿Autorizar a <b>${esc(nombreCliente)}</b>?</h2>
+      <p>Pide acceso a las apps de 4housing <b>en tu nombre</b>.</p>
+      <div class="notice">
+        Si aprobás, va a poder ver y hacer <b>lo mismo que vos</b> en las apps del portal,
+        con tus permisos por sector y cargo. Aprobá solo si iniciaste vos este pedido.
+      </div>
+      <dl>
+        <div><dt>Aplicación</dt><dd>${esc(nombreCliente)}</dd></div>
+        ${sitio ? `<div><dt>Sitio</dt><dd><code>${esc(sitio)}</code></dd></div>` : ''}
+        <div><dt>Vuelve a</dt><dd><code>${esc(det.redirect_uri || '—')}</code></dd></div>
+        ${scopes ? `<div><dt>Permisos</dt><dd><code>${esc(scopes)}</code></dd></div>` : ''}
+        <div><dt>Tu cuenta</dt><dd>${esc(perfil.nombre ? perfil.nombre + ' · ' + email : email)}</dd></div>
+      </dl>
+      <div class="acciones">
+        <button id="btn-rechazar">Rechazar</button>
+        <button class="btn-primary" id="btn-aprobar">Aprobar</button>
+      </div>
+      <div class="pie">
+        <span>¿No sos vos?</span>
+        <button class="btn-ghost" id="btn-otra">Usar otra cuenta</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-aprobar').addEventListener('click', aprobar);
+  document.getElementById('btn-rechazar').addEventListener('click', rechazar);
+  document.getElementById('btn-otra').addEventListener('click', otraCuenta);
+}
+
+function bloquearBotones(){
+  $main.querySelectorAll('button').forEach(b => { b.disabled = true; });
+}
+
+async function aprobar(){
+  bloquearBotones();
+  const { data, error } = await sb.auth.oauth.approveAuthorization(authorizationId);
+  if (error) { vistaError('No se pudo aprobar: ' + error.message); return; }
+  irA(data?.redirect_url);
+}
+
+async function rechazar(){
+  bloquearBotones();
+  const { data, error } = await sb.auth.oauth.denyAuthorization(authorizationId);
+  if (error) { vistaError('No se pudo rechazar: ' + error.message); return; }
+  irA(data?.redirect_url);
+}
+
+async function otraCuenta(){
+  bloquearBotones();
+  await sb.auth.signOut();
+  vistaLogin();
+}
+
+async function iniciar(){
+  if (!authorizationId) {
+    vistaError('Falta el parámetro authorization_id. Esta página se abre sola desde la aplicación que pide acceso.');
+    return;
+  }
+  if (!window.supabase?.createClient) { vistaError('No se pudo cargar la librería de Supabase.'); return; }
+  sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  if (!sb.auth.oauth?.getAuthorizationDetails) {
+    vistaError('La versión de supabase-js cargada no trae la API de OAuth Server.');
+    return;
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { vistaLogin(); return; }
+
+  // Si el login volvió con tokens en el hash, limpiar la barra de direcciones.
+  if (window.location.hash) history.replaceState(null, '', urlDeVuelta());
+
+  const uid = session.user.id;
+  const email = session.user.email || '';
+  const { data: perfil, error: ePerfil } =
+    await sb.from('perfiles').select('nombre, email, activo').eq('id', uid).maybeSingle();
+  if (ePerfil) { vistaError('Error cargando tu perfil: ' + ePerfil.message); return; }
+  if (!perfil || !perfil.activo) { vistaInactivo(perfil, email); return; }
+
+  const { data: det, error } = await sb.auth.oauth.getAuthorizationDetails(authorizationId);
+  if (error || !det) {
+    vistaError(error?.message || 'El pedido de autorización no existe o venció. Volvé a iniciarlo desde la aplicación.');
+    return;
+  }
+  // Consentimiento ya dado antes: Supabase devuelve directamente a dónde volver.
+  if (!('authorization_id' in det)) { irA(det.redirect_url); return; }
+
+  vistaConsentimiento(det, perfil, perfil.email || email);
+}
+
+iniciar().catch(e => vistaError('Error inesperado: ' + (e?.message || e)));
+</script>
+</body>
+</html>
