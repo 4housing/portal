@@ -22,6 +22,7 @@ import { Hono } from 'npm:hono@4.9.7';
 import { z } from 'npm:zod@4.1.13';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0';
 import { gpNorm, resumenProyecto, type CtxGP } from './compras_gp.ts';
+import { financieroProyecto, type CtxFin } from './compras_fin.ts';
 
 const FUNCION = 'conector-4housing';
 const SUPABASE_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
@@ -29,7 +30,7 @@ const PUBLISHABLE_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const BASE_PUBLICA = `${SUPABASE_URL}/functions/v1/${FUNCION}`;
 const RECURSO = `${BASE_PUBLICA}/mcp`;
 const METADATA_URL = `${BASE_PUBLICA}/.well-known/oauth-protected-resource`;
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 type Row = Record<string, any>;
 
@@ -109,6 +110,23 @@ function crearServidor(sb: SupabaseClient) {
     return (data || []) as Row[];
   }
 
+  // Busca el proyecto por id, código o nombre. Devuelve el proyecto, o una respuesta MCP lista
+  // (sin acceso / no encontrado / ambiguo).
+  async function resolverProyecto(proyecto: string): Promise<{ p: Row } | { respuesta: any }> {
+    const lista = await proyectos();
+    if (!lista.length) return { respuesta: texto(SIN_ACCESO) };
+    const k = gpNorm(proyecto);
+    let cands = lista.filter(p => String(p.id) === proyecto.trim());
+    if (!cands.length) cands = lista.filter(p => gpNorm(p.codigo) === k || gpNorm(p.nombre) === k);
+    if (!cands.length) cands = lista.filter(p => gpNorm(p.codigo).includes(k) || gpNorm(p.nombre).includes(k));
+    if (!cands.length) return { respuesta: error(`No encontré ningún proyecto que coincida con "${proyecto}". Usá compras_listar_proyectos.`) };
+    if (cands.length > 1) {
+      return { respuesta: texto({ aviso: 'Hay más de un proyecto que coincide: pedí el resumen con el id.',
+        proyectos: cands.map(p => ({ id: p.id, codigo: p.codigo ?? null, nombre: p.nombre ?? null })) }) };
+    }
+    return { p: cands[0] };
+  }
+
   server.registerTool('compras_listar_proyectos', {
     title: 'Compras · listar proyectos',
     description: 'Lista los proyectos (obras) de Gestión de Proyectos de la app de Compras de 4housing: id, código y nombre. ' +
@@ -138,18 +156,9 @@ function crearServidor(sb: SupabaseClient) {
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ proyecto }) => {
     try {
-      const lista = await proyectos();
-      if (!lista.length) return texto(SIN_ACCESO);
-      const k = gpNorm(proyecto);
-      let cands = lista.filter(p => String(p.id) === proyecto.trim());
-      if (!cands.length) cands = lista.filter(p => gpNorm(p.codigo) === k || gpNorm(p.nombre) === k);
-      if (!cands.length) cands = lista.filter(p => gpNorm(p.codigo).includes(k) || gpNorm(p.nombre).includes(k));
-      if (!cands.length) return error(`No encontré ningún proyecto que coincida con "${proyecto}". Usá compras_listar_proyectos.`);
-      if (cands.length > 1) {
-        return texto({ aviso: 'Hay más de un proyecto que coincide: pedí el resumen con el id.',
-          proyectos: cands.map(p => ({ id: p.id, codigo: p.codigo ?? null, nombre: p.nombre ?? null })) });
-      }
-      const p = cands[0];
+      const r = await resolverProyecto(proyecto);
+      if ('respuesta' in r) return r.respuesta;
+      const p = r.p;
       const id = p.id;
       const porProyecto = (q: any) => q.eq('proyecto_id', id);
       const [presupuesto, oc, mapeo, reparto, ogsec, imports, traslados, usdOficial, ogs] = await Promise.all([
@@ -174,6 +183,34 @@ function crearServidor(sb: SupabaseClient) {
       const ult = imports.length ? imports[imports.length - 1] : null;
       return texto({ ...res, ultima_importacion_tango: ult ? { fecha: ult.importado_en, archivo: ult.archivo_nombre, renglones: ult.filas } : null });
     } catch (e) { return error('No se pudo calcular el resumen: ' + (e as Error).message); }
+  });
+
+  server.registerTool('compras_financiero_proyecto', {
+    title: 'Compras · foto financiera de un proyecto',
+    description: 'Foto FINANCIERA de un proyecto, separada de la económica: por cada Orden de Gasto (OG) de la app, ' +
+      'total, certificado, liberado, certificado sin liberar, pendiente de certificar, pagado, pendiente de pago y OP armadas ' +
+      'sin pagar, con totales del proyecto en pesos; y para las OC de Tango, facturado y pendiente de facturar. Misma lógica que ' +
+      'la app de Compras; en OGs compartidas con otras obras cuentan solo los renglones de esta obra. Para "cuánto llevamos ' +
+      'comprado vs presupuesto" usá compras_resumen_proyecto; esta herramienta responde certificaciones, pagos y pendientes.',
+    inputSchema: { proyecto: z.string().min(1).describe('Id, código o parte del nombre del proyecto (ej. "Vicuña")') },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ proyecto }) => {
+    try {
+      const r = await resolverProyecto(proyecto);
+      if ('respuesta' in r) return r.respuesta;
+      const p = r.p;
+      const [ogs, certificados, pagos, oc, imports] = await Promise.all([
+        leerTodo(sb, 'compras_ogs', 'id,numero,fecha,proveedor,proveedor_cod,anulada,clasif_og,items,bonif_pct,monto_total,cierres,moneda,tc_pesos,condicion,anticipo_pct,anticipo_metodo,pago_usd', 'id'),
+        leerTodo(sb, 'compras_og_certificados', 'id,og_id,numero,fecha,pct,avances,aprobacion,estado', 'id'),
+        leerTodo(sb, 'compras_pagos', '*', 'id'),
+        leerTodo(sb, 'compras_gp_oc', 'id,oc_numero,estado_oc,total_ars,cantidad_pedida,cantidad_facturada,cantidad_pend_facturar', 'id', (q: any) => q.eq('proyecto_id', p.id)),
+        leerOpcional(sb, 'compras_gp_importaciones', 'importado_en,archivo_nombre', 'importado_en', (q: any) => q.eq('proyecto_id', p.id)),
+      ]);
+      const ctx: CtxFin = { proyecto: p, ogs, certificados, pagos, oc };
+      const res = financieroProyecto(ctx);
+      const ult = imports.length ? imports[imports.length - 1] : null;
+      return texto({ ...res, ultima_importacion_tango: ult ? { fecha: ult.importado_en, archivo: ult.archivo_nombre } : null });
+    } catch (e) { return error('No se pudo calcular la foto financiera: ' + (e as Error).message); }
   });
 
   return server;
