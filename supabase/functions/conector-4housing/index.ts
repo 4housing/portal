@@ -7,7 +7,10 @@
 //     portal/oauth/consent). El cliente (Claude) manda el access token del usuario.
 //   · Cada consulta a la base viaja con ESE token (nunca service key), así que
 //     aplica la RLS existente: tiene_sector / puede_editar_sector / compras_flag.
-//   · v1: solo CONSULTA, solo Compras (Gestión de Proyectos, foto económica).
+//   · Herramientas generales (v3): listar tablas por sector, SQL de solo lectura
+//     (corre como el usuario, transacción READ ONLY) y altas/modificaciones/bajas
+//     con vista previa + confirmación explícita. Más las de Compras (económica y
+//     financiera de Gestión de Proyectos).
 //
 // Deploy: verify_jwt = false (la validación del token la hace este código, para
 // poder responder el 401 con WWW-Authenticate que exige el estándar MCP).
@@ -30,7 +33,8 @@ const PUBLISHABLE_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const BASE_PUBLICA = `${SUPABASE_URL}/functions/v1/${FUNCION}`;
 const RECURSO = `${BASE_PUBLICA}/mcp`;
 const METADATA_URL = `${BASE_PUBLICA}/.well-known/oauth-protected-resource`;
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
+const MAX_FILAS_ESCRITURA = 50;
 
 type Row = Record<string, any>;
 
@@ -211,6 +215,150 @@ function crearServidor(sb: SupabaseClient) {
       const ult = imports.length ? imports[imports.length - 1] : null;
       return texto({ ...res, ultima_importacion_tango: ult ? { fecha: ult.importado_en, archivo: ult.archivo_nombre } : null });
     } catch (e) { return error('No se pudo calcular la foto financiera: ' + (e as Error).message); }
+  });
+
+  // ======================= Herramientas generales =========================
+  server.registerTool('listar_tablas', {
+    title: 'Apps del portal · tablas que podés ver',
+    description: 'Lista las tablas y vistas de las apps del portal 4housing que el usuario puede consultar, según sus ' +
+      'sectores (panel de Usuarios): fhcomercial (Comercial 4housing), labocomercial (LABO), diseno, planificacion, compras, ' +
+      'eerr, adminfin, rrhh, logistica; más tablas generales del portal. Sin parámetros devuelve nombres por sector; con ' +
+      '"sector" o "tabla" devuelve también las columnas y sus tipos. Usalo antes de escribir una consulta_sql.',
+    inputSchema: {
+      sector: z.string().optional().describe('Filtrar por sector (ej. "compras", "planificacion")'),
+      tabla: z.string().optional().describe('Nombre exacto o parte del nombre de una tabla, para ver sus columnas'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sector, tabla }) => {
+    try {
+      const { data, error: e } = await sb.rpc('conector_tablas', {}, { get: true });
+      if (e) throw new Error(e.message);
+      let filas = (data || []) as Row[];
+      if (sector) filas = filas.filter(f => (f.sector || 'portal') === sector.trim().toLowerCase());
+      if (tabla) filas = filas.filter(f => String(f.tabla).includes(tabla.trim().toLowerCase()));
+      if (!filas.length) return texto('No hay tablas visibles con ese filtro para tu usuario.');
+      if (sector || tabla) return texto(filas.map(f => ({ tabla: f.tabla, tipo: f.tipo, sector: f.sector || 'portal', columnas: f.columnas })));
+      const porSector: Record<string, string[]> = {};
+      filas.forEach(f => { const k = f.sector || 'portal'; (porSector[k] = porSector[k] || []).push(f.tabla); });
+      return texto({ aviso: 'Pedí listar_tablas con "sector" o "tabla" para ver las columnas.', tablas_por_sector: porSector });
+    } catch (e) { return error('No se pudieron listar las tablas: ' + (e as Error).message); }
+  });
+
+  server.registerTool('consulta_sql', {
+    title: 'Apps del portal · consulta SQL (solo lectura)',
+    description: 'Ejecuta UNA consulta SELECT (o WITH … SELECT) de PostgreSQL sobre la base de las apps del portal y devuelve ' +
+      'las filas en JSON. Corre COMO EL USUARIO: solo ve lo que sus permisos le dejan ver (si una tabla devuelve 0 filas puede ' +
+      'ser falta de permiso). Es de solo lectura: no puede modificar nada. Tablas en el esquema public, con prefijo por app ' +
+      '(compras_, planificacion_, diseno_, fhcomercial_, labocomercial_, eerr_, …). Usá listar_tablas para ver columnas. ' +
+      'Límite: 15 segundos y hasta 2000 filas; para totales usá agregaciones (sum, count, group by) en vez de traer todo.',
+    inputSchema: {
+      sql: z.string().min(1).describe('Una sola consulta SELECT o WITH, sin ";" intermedios'),
+      limite: z.number().int().min(1).max(2000).optional().describe('Máximo de filas a devolver (por defecto 500)'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sql, limite }) => {
+    try {
+      const { data, error: e } = await sb.rpc('conector_consulta_sql', { q: sql, limite: limite ?? 500 }, { get: true });
+      if (e) return error('La consulta falló: ' + e.message + (e.hint ? ' (' + e.hint + ')' : ''));
+      const filas = (data || []) as Row[];
+      return texto({ filas: filas.length, tope: limite ?? 500, datos: filas });
+    } catch (e) { return error('No se pudo ejecutar la consulta: ' + (e as Error).message); }
+  });
+
+  // ---- Escritura: siempre vista previa primero; escribe solo con confirmado=true ----
+  const Filtro = z.object({
+    columna: z.string().regex(/^[a-z_][a-z0-9_]*$/),
+    op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'is', 'in']),
+    valor: z.any(),
+  });
+  const nombreTabla = z.string().regex(/^[a-z][a-z0-9_]*$/).describe('Tabla del esquema public (ej. "compras_proveedores")');
+  const AVISO_CONFIRMAR = 'Primero llamala SIN confirmado (devuelve la vista previa de lo que cambiaría); mostrásela al ' +
+    'usuario y pedile confirmación explícita; recién con su OK, repetí la llamada con confirmado=true. La base solo deja ' +
+    'escribir a quien puede editar esa app (los lectores no). Para operaciones con reglas de negocio (numeración, ' +
+    'historial, certificar, pagar) preferí la app: esta herramienta escribe filas tal cual.';
+  function aplicarFiltros(q: any, filtros: z.infer<typeof Filtro>[]) {
+    for (const f of filtros) {
+      let v: any = f.valor;
+      if (f.op === 'in') v = '(' + (Array.isArray(v) ? v : [v]).map((x: unknown) => JSON.stringify(x)).join(',') + ')';
+      q = f.op === 'in' ? q.filter(f.columna, 'in', v) : q.filter(f.columna, f.op, v);
+    }
+    return q;
+  }
+  async function vistaPrevia(tabla: string, filtros: z.infer<typeof Filtro>[]) {
+    const { data, count, error: e } = await aplicarFiltros(sb.from(tabla).select('*', { count: 'exact' }), filtros).limit(20);
+    if (e) throw new Error(e.message);
+    return { filas_que_coinciden: count ?? (data || []).length, muestra: data || [] };
+  }
+
+  server.registerTool('insertar', {
+    title: 'Apps del portal · cargar registros',
+    description: 'Inserta hasta ' + MAX_FILAS_ESCRITURA + ' filas en una tabla de las apps del portal, con los permisos del usuario. ' + AVISO_CONFIRMAR,
+    inputSchema: {
+      tabla: nombreTabla,
+      registros: z.array(z.record(z.string(), z.any())).min(1).max(MAX_FILAS_ESCRITURA).describe('Filas a insertar (columna: valor)'),
+      confirmado: z.boolean().optional().describe('true solo después de que el usuario aprobó la vista previa'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ tabla, registros, confirmado }) => {
+    try {
+      if (!confirmado) return texto({ vista_previa: true, accion: 'insertar', tabla, cantidad: registros.length, registros,
+        siguiente_paso: 'Mostrale esto al usuario y, si confirma, repetí con confirmado=true.' });
+      const { data, error: e } = await sb.from(tabla).insert(registros).select();
+      if (e) return error('La base no permitió la carga: ' + e.message);
+      return texto({ ok: true, insertadas: (data || []).length, filas: data });
+    } catch (e) { return error('No se pudo insertar: ' + (e as Error).message); }
+  });
+
+  server.registerTool('actualizar', {
+    title: 'Apps del portal · modificar registros',
+    description: 'Modifica columnas de las filas que cumplen los filtros (obligatorios; máximo ' + MAX_FILAS_ESCRITURA +
+      ' filas por vez), con los permisos del usuario. ' + AVISO_CONFIRMAR,
+    inputSchema: {
+      tabla: nombreTabla,
+      filtros: z.array(Filtro).min(1).describe('Condiciones (se combinan con AND), ej. [{columna:"id",op:"eq",valor:123}]'),
+      cambios: z.record(z.string(), z.any()).describe('Columnas a modificar y su nuevo valor'),
+      confirmado: z.boolean().optional().describe('true solo después de que el usuario aprobó la vista previa'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ tabla, filtros, cambios, confirmado }) => {
+    try {
+      if (!Object.keys(cambios).length) return error('No indicaste qué columnas cambiar.');
+      const vp = await vistaPrevia(tabla, filtros);
+      if (!vp.filas_que_coinciden) return texto('Ninguna fila visible para tu usuario cumple esos filtros: no hay nada para modificar.');
+      if (vp.filas_que_coinciden > MAX_FILAS_ESCRITURA) return error(`Los filtros abarcan ${vp.filas_que_coinciden} filas; el máximo por vez es ${MAX_FILAS_ESCRITURA}. Afiná los filtros.`);
+      if (!confirmado) return texto({ vista_previa: true, accion: 'actualizar', tabla, filtros, cambios, ...vp,
+        siguiente_paso: 'Mostrale esto al usuario y, si confirma, repetí con confirmado=true.' });
+      const { data, error: e } = await aplicarFiltros(sb.from(tabla).update(cambios), filtros).select();
+      if (e) return error('La base no permitió la modificación: ' + e.message);
+      const n = (data || []).length;
+      if (!n) return error('La base no modificó ninguna fila: tu usuario no tiene permiso de edición sobre esas filas.');
+      return texto({ ok: true, modificadas: n, filas: data });
+    } catch (e) { return error('No se pudo modificar: ' + (e as Error).message); }
+  });
+
+  server.registerTool('eliminar', {
+    title: 'Apps del portal · borrar registros',
+    description: 'Borra las filas que cumplen los filtros (obligatorios; máximo ' + MAX_FILAS_ESCRITURA + ' filas por vez), ' +
+      'con los permisos del usuario. Es irreversible. ' + AVISO_CONFIRMAR,
+    inputSchema: {
+      tabla: nombreTabla,
+      filtros: z.array(Filtro).min(1).describe('Condiciones (se combinan con AND), ej. [{columna:"id",op:"eq",valor:123}]'),
+      confirmado: z.boolean().optional().describe('true solo después de que el usuario aprobó la vista previa'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  }, async ({ tabla, filtros, confirmado }) => {
+    try {
+      const vp = await vistaPrevia(tabla, filtros);
+      if (!vp.filas_que_coinciden) return texto('Ninguna fila visible para tu usuario cumple esos filtros: no hay nada para borrar.');
+      if (vp.filas_que_coinciden > MAX_FILAS_ESCRITURA) return error(`Los filtros abarcan ${vp.filas_que_coinciden} filas; el máximo por vez es ${MAX_FILAS_ESCRITURA}. Afiná los filtros.`);
+      if (!confirmado) return texto({ vista_previa: true, accion: 'eliminar', irreversible: true, tabla, filtros, ...vp,
+        siguiente_paso: 'Mostrale esto al usuario y, si confirma, repetí con confirmado=true.' });
+      const { data, error: e } = await aplicarFiltros(sb.from(tabla).delete(), filtros).select();
+      if (e) return error('La base no permitió el borrado: ' + e.message);
+      const n = (data || []).length;
+      if (!n) return error('La base no borró ninguna fila: tu usuario no tiene permiso para borrar esas filas.');
+      return texto({ ok: true, borradas: n, filas: data });
+    } catch (e) { return error('No se pudo borrar: ' + (e as Error).message); }
   });
 
   return server;
