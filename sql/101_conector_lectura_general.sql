@@ -33,26 +33,27 @@ returns table (tabla text, tipo text, sector text, columnas jsonb)
 language sql stable security invoker
 set search_path = public, pg_temp
 as $$
+  -- Por oid (pg_catalog), no por nombre: has_table_privilege(oid, …) nunca falla por
+  -- tablas de otros esquemas ni depende del orden en que Postgres evalúe las condiciones.
   with base as (
-    select c.table_name::text as tabla,
-           case t.table_type when 'VIEW' then 'vista' else 'tabla' end as tipo,
-           split_part(c.table_name, '_', 1) as prefijo,
-           jsonb_agg(jsonb_build_object('columna', c.column_name, 'tipo', c.data_type)
-                     order by c.ordinal_position) as columnas
-      from information_schema.columns c
-      join information_schema.tables t
-        on t.table_schema = c.table_schema and t.table_name = c.table_name
-     where c.table_schema = 'public'
-       and has_table_privilege(format('public.%I', c.table_name), 'select')
-     group by c.table_name, t.table_type
+    select c.relname::text as tabla,
+           case c.relkind when 'v' then 'vista' when 'm' then 'vista' else 'tabla' end as tipo,
+           split_part(c.relname, '_', 1) as prefijo,
+           (select jsonb_agg(jsonb_build_object('columna', a.attname, 'tipo', format_type(a.atttypid, a.atttypmod))
+                             order by a.attnum)
+              from pg_attribute a
+             where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped) as columnas
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relkind in ('r', 'p', 'v', 'm')
+       and has_table_privilege(c.oid, 'select')
   ), sectores as (
     select e.enumlabel::text as sector
       from pg_enum e join pg_type ty on ty.oid = e.enumtypid
      where ty.typname = 'sector_portal'
   )
-  select b.tabla, b.tipo,
-         case when s.sector is not null then s.sector else null end as sector,
-         b.columnas
+  select b.tabla, b.tipo, s.sector, b.columnas
     from base b
     left join sectores s on s.sector = b.prefijo
    where (s.sector is null)                                           -- tablas del portal (perfiles, …): decide la RLS
