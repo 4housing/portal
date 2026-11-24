@@ -6,13 +6,18 @@ del portal desde Claude **con los permisos de cada usuario**.
 - **Login:** Supabase Auth como servidor OAuth 2.1. La aprobación la hace `portal/oauth/consent/`.
 - **Permisos:** cada consulta va con el token del usuario (nunca service key): aplica la RLS existente
   (`tiene_sector`, `puede_editar_sector`, `compras_flag`). Quien no tiene el sector no ve nada.
-- **Alcance (v2):** solo consulta, solo Compras (foto económica + financiera).
+- **Alcance (v3):** todas las apps del portal, con los permisos de cada usuario: listar tablas, SQL de
+  solo lectura, y altas/modificaciones/bajas con vista previa + confirmación. Más las herramientas de
+  Compras (foto económica y financiera).
 
 | Herramienta | Qué devuelve |
 | --- | --- |
 | `compras_listar_proyectos` | Proyectos de Gestión de Proyectos (id, código, nombre). |
 | `compras_resumen_proyecto` | Foto **económica**: presupuesto vs comprado (OC de Tango + OGs), avance, saldo, extracosto, ahorro, sin clasificar y detalle por rubro. No incluye la foto financiera. |
 | `compras_financiero_proyecto` | Foto **financiera**: por OG, certificado, liberado, pendiente de certificar, pagado, pendiente de pago y OP armadas (OGs compartidas: solo los renglones de la obra), totales en pesos; OC de Tango: facturado y pendiente de facturar. |
+| `listar_tablas` | Tablas/vistas de las apps que el usuario tiene (por sector), con columnas. Función SQL `conector_tablas()`. |
+| `consulta_sql` | Un `SELECT` libre, **como el usuario** (RLS) y en transacción **de solo lectura** (GET); 15 s y hasta 2000 filas. Función SQL `conector_consulta_sql()` (`sql/101`). |
+| `insertar` / `actualizar` / `eliminar` | Escritura con los permisos del usuario. Sin `confirmado=true` solo devuelve la vista previa. Filtros obligatorios para modificar/borrar; máximo 50 filas por vez. |
 
 ## Cálculo
 
