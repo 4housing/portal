@@ -197,6 +197,21 @@ const SECCIONES = {
   logistica: [], // sin app publicada todavía
 };
 
+// Compras: recortes que no corresponden a ninguna pestaña de SECCIONES.compras
+// (pasan DENTRO de una pantalla que ya se ve, o son más angostos que una pestaña
+// entera) — mismo mecanismo que "Edita costos" en LABO o "ve_sueldos" en
+// Planificación: un checkbox suelto en permisos, no una fila de la matriz.
+const COMPRAS_FLAGS = [
+  { key: 've_confidencial', label: 'Ve confidencial',
+    nota: 'Cuentas y datos sensibles de Diccionarios (cuentas, auxiliares). Sensible: tildar solo a quien corresponda.' },
+  { key: 'es_certificador', label: 'Certificador',
+    nota: 'Puede certificar el avance de una Orden de Gasto que tenga asignada.' },
+  { key: 'puede_cargar_asiento', label: 'Carga asiento',
+    nota: 'Puede cargar el N° de asiento contable de Tango en una Orden de Pago, dentro de Tesorería.' },
+  { key: 'puede_eliminar_pagos', label: 'Elimina pagos',
+    nota: 'Puede borrar un pago o ingreso ya registrado en Tesorería. No lo da el rol Admin automáticamente: se tilda a mano.' },
+];
+
 // Secciones que un usuario nuevo NO ve por defecto (sensibles). Dirección las
 // habilita a mano. (Actividad además es admin-only dentro de la app.)
 const SENSIBLE_DEFAULT = {
@@ -272,7 +287,7 @@ function render(){
         + 'Los roles dependen de la app: la mayoría usa <b>Admin</b> / <b>Miembro con edición</b> / <b>Solo visión</b>; Diseño y Planificación además tienen <b>Coordinación</b> (y Planificación, <b>PM</b>). '
         + '<b>Dirección</b> es control total en todas las apps. '
         + 'Los cambios rigen desde la próxima carga de cada app. '
-        + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial, LABO y Administración y Finanzas</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos). <b>EERR</b> ya oculta las solapas y bloquea las cargas según Ver / Editar (todavía no a nivel base de datos). <b>Compras</b> se puede asignar pero todavía no aplica los permisos (se conecta en una próxima etapa).</i></div>';
+        + '<i>Nota: ya aplican estos accesos en vivo <b>Planificación, Diseño, Comercial, LABO, Administración y Finanzas y Compras</b> (ocultan lo que no se puede ver y bloquean lo que no se puede editar, incluso a nivel base de datos en Tesorería). <b>EERR</b> ya oculta las solapas y bloquea las cargas según Ver / Editar (todavía no a nivel base de datos).</i></div>';
   h += '<div class="buscador"><input id="buscarUsuario" type="search" placeholder="🔎 Buscar usuario por nombre o email…" value="' + esc(filtroUsuarios) + '" oninput="onBuscar(this.value)" autocomplete="off"></div>';
   h += '<div id="lista"></div>';
   $main.innerHTML = h;
@@ -334,6 +349,16 @@ function bloqueSector(u, s){
       + (esLector && !dir ? ' disabled title="Solo visión no puede editar costos"' : '')
       + ' onchange="toggleEditaCostos(\'' + u.id + '\',this.checked)">'
       + '<span><b>Edita costos</b><small>Maestro de costos y precios del vendedor externo. Sensible: tildar solo a quien corresponda.</small></span></label></div>';
+  } else if (s.sector === 'compras') {
+    // Recortes DENTRO de pantallas que ya se ven, no pestañas propias — por eso van
+    // como flags sueltos (igual que "Edita costos" en LABO) y no como fila de la matriz.
+    flags = COMPRAS_FLAGS.map(function (f) {
+      const on = !!(s.permisos && s.permisos[f.key] === true);
+      return '<div class="mx-flag"><label><input type="checkbox" ' + (on ? 'checked' : '')
+        + (esLector && !dir ? ' disabled title="Solo visión no accede a esto"' : '')
+        + ' onchange="toggleCompraFlag(\'' + u.id + '\',\'' + f.key + '\',\'' + f.label.replace(/'/g, "\\'") + '\',this.checked)">'
+        + '<span><b>' + esc(f.label) + '</b><small>' + esc(f.nota) + '</small></span></label></div>';
+    }).join('');
   }
 
   return '<div class="sec-block">'
@@ -472,6 +497,18 @@ async function toggleEditaCostos(uid, valor){
   const { error } = await sb.from('perfiles_sector').update({ permisos: permisos }).eq('perfil_id', uid).eq('sector', 'labocomercial');
   if (error) return estado(uid, 'Error: ' + error.message, 'err');
   estado(uid, '✓ LABO — Edita costos: ' + (valor ? 'sí' : 'no') + '.', 'ok');
+  await cargar();
+}
+
+async function toggleCompraFlag(uid, key, label, valor){
+  const u = USUARIOS.find(x => x.id === uid);
+  const fila = u && (u.perfiles_sector || []).find(s => s.sector === 'compras');
+  if (!fila) return;
+  const permisos = Object.assign({}, fila.permisos || {});
+  if (valor) permisos[key] = true; else delete permisos[key];
+  const { error } = await sb.from('perfiles_sector').update({ permisos: permisos }).eq('perfil_id', uid).eq('sector', 'compras');
+  if (error) return estado(uid, 'Error: ' + error.message, 'err');
+  estado(uid, '✓ Compras — ' + label + ': ' + (valor ? 'sí' : 'no') + '.', 'ok');
   await cargar();
 }
 
