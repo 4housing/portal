@@ -18,6 +18,8 @@ del portal desde Claude **con los permisos de cada usuario**.
 | `listar_tablas` | Tablas/vistas de las apps que el usuario tiene (por sector), con columnas. Función SQL `conector_tablas()`. |
 | `consulta_sql` | Un `SELECT` libre, **como el usuario** (RLS) y en transacción **de solo lectura** (GET); 15 s y hasta 2000 filas. Función SQL `conector_consulta_sql()` (`sql/101`). |
 | `insertar` / `actualizar` / `eliminar` | Escritura con los permisos del usuario. Sin `confirmado=true` solo devuelve la vista previa. Filtros obligatorios para modificar/borrar; máximo 50 filas por vez. |
+| `sharepoint_conectar` | Link para conectar (una vez) la cuenta Microsoft de la persona. Debe ser la misma persona que la cuenta del portal. |
+| `sharepoint_listar` / `_crear_carpeta` / `_copiar` / `_guardar_archivo` / `_mover` | SharePoint de Gerencia de Producción, **solo dentro de `Documentos compartidos/01 DISEÑO Y DESARROLLO`**, como la persona (Graph delegado). Sin borrar, sin pisar archivos, vista previa + `confirmado=true`, solo editores de Diseño. Registro en `diseno_sharepoint_log`. |
 
 ## Cálculo
 
@@ -38,7 +40,10 @@ Sin JWT de plataforma (el código valida el token y responde el 401 con `WWW-Aut
 supabase functions deploy conector-4housing --no-verify-jwt --project-ref wcpkpwxhqdcdljfwzcmy
 ```
 
-No usa secretos ni variables de entorno: la publishable key es pública (la misma de `portal/index.html`).
+Secretos (Edge Functions → Secrets), solo para SharePoint: `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` (app de Entra
+"4housing Conector Claude", permisos delegados Files.ReadWrite.All, Sites.ReadWrite.All, offline_access, User.Read; redirect
+`…/functions/v1/conector-4housing/ms/callback`). El refresh token de cada persona se guarda cifrado (AES-GCM, clave derivada
+del client secret) en `conector_ms_tokens` (sin acceso por la API). Rotar el secret obliga a reconectar. La publishable key es pública.
 
 ## Registro en Claude
 

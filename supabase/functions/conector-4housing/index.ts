@@ -11,6 +11,8 @@
 //     (corre como el usuario, transacción READ ONLY) y altas/modificaciones/bajas
 //     con vista previa + confirmación explícita. Más las de Compras (económica y
 //     financiera de Gestión de Proyectos).
+//   · SharePoint (v4): escritura en Gerencia de Producción · 01 DISEÑO Y DESARROLLO
+//     como la persona (Microsoft Graph delegado), ver sharepoint.ts.
 //
 // Deploy: verify_jwt = false (la validación del token la hace este código, para
 // poder responder el 401 con WWW-Authenticate que exige el estándar MCP).
@@ -26,6 +28,7 @@ import { z } from 'npm:zod@4.1.13';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0';
 import { gpNorm, resumenProyecto, type CtxGP } from './compras_gp.ts';
 import { financieroProyecto, type CtxFin } from './compras_fin.ts';
+import { registrarSharePoint, verificarParaLogin, procesarCallback, urlAutorizar } from './sharepoint.ts';
 
 const FUNCION = 'conector-4housing';
 const SUPABASE_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
@@ -33,7 +36,8 @@ const PUBLISHABLE_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const BASE_PUBLICA = `${SUPABASE_URL}/functions/v1/${FUNCION}`;
 const RECURSO = `${BASE_PUBLICA}/mcp`;
 const METADATA_URL = `${BASE_PUBLICA}/.well-known/oauth-protected-resource`;
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
+const MS_CALLBACK = `${BASE_PUBLICA}/ms/callback`;
 const MAX_FILAS_ESCRITURA = 50;
 
 type Row = Record<string, any>;
@@ -52,7 +56,7 @@ function noAutorizado(detalle: string) {
 }
 
 /** Cliente de Supabase que actúa COMO el usuario (RLS aplica). null si el token no vale. */
-async function clienteDelUsuario(req: Request): Promise<{ sb: SupabaseClient; email: string } | null> {
+async function clienteDelUsuario(req: Request): Promise<{ sb: SupabaseClient; email: string; id: string } | null> {
   const h = req.headers.get('Authorization') || '';
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) return null;
@@ -64,7 +68,7 @@ async function clienteDelUsuario(req: Request): Promise<{ sb: SupabaseClient; em
   // getUser valida el token contra Supabase Auth (firma, vencimiento, sesión vigente).
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data?.user) return null;
-  return { sb, email: data.user.email || '' };
+  return { sb, email: data.user.email || '', id: data.user.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +109,7 @@ const SIN_ACCESO = 'No se encontraron proyectos. Puede que no tengas el sector C
 // ---------------------------------------------------------------------------
 // Herramientas (todas de solo lectura)
 // ---------------------------------------------------------------------------
-function crearServidor(sb: SupabaseClient) {
+function crearServidor(sb: SupabaseClient, usuario: { id: string; email: string }) {
   const server = new McpServer({ name: '4housing-apps', version: VERSION });
 
   async function proyectos(): Promise<Row[]> {
@@ -361,6 +365,9 @@ function crearServidor(sb: SupabaseClient) {
     } catch (e) { return error('No se pudo borrar: ' + (e as Error).message); }
   });
 
+  // ======================= SharePoint (Diseño) =========================
+  registrarSharePoint(server, { sb, userId: usuario.id, email: usuario.email, basePublica: BASE_PUBLICA, texto, error });
+
   return server;
 }
 
@@ -380,11 +387,34 @@ app.get('/.well-known/oauth-protected-resource', (c) => c.json({
 app.all('/mcp', async (c) => {
   const u = await clienteDelUsuario(c.req.raw);
   if (!u) return noAutorizado('Falta un token válido. Conectá el conector con tu cuenta de 4housing.');
-  const server = crearServidor(u.sb);
+  const server = crearServidor(u.sb, { id: u.id, email: u.email });
   // Sin estado: cada pedido HTTP es independiente (cada uno trae su token).
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   return transport.handleRequest(c.req.raw);
+});
+
+// Conexión de la cuenta Microsoft (link que da la herramienta sharepoint_conectar).
+function paginaSimple(titulo: string, mensaje: string, ok: boolean) {
+  const esc = (x: string) => x.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as Record<string, string>)[ch]);
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(titulo)}</title><style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f4f1;color:#20262e;margin:0;padding:16px}
+.c{max-width:460px;margin:12vh auto 0;background:#fff;border:1px solid #dfe2e6;border-radius:10px;padding:28px;text-align:center}
+h1{font-size:1.15rem;margin:0 0 10px;color:${ok ? '#1a7a45' : '#9a5a12'}}p{color:#5b646e;font-size:.95rem;line-height:1.5}</style></head>
+<body><div class="c"><h1>${esc(titulo)}</h1><p>${esc(mensaje)}</p></div></body></html>`;
+}
+app.get('/ms/login', async (c) => {
+  const t = c.req.query('t') || '';
+  if (!(await verificarParaLogin(t))) return c.html(paginaSimple('Link vencido', 'El link de conexión venció o no es válido. Pedile a Claude uno nuevo.', false), 400);
+  return c.redirect(urlAutorizar(MS_CALLBACK, t), 302);
+});
+app.get('/ms/callback', async (c) => {
+  try {
+    const r = await procesarCallback(new URL(c.req.url), MS_CALLBACK);
+    return c.html(paginaSimple(r.ok ? 'Cuenta conectada' : 'No se pudo conectar', r.mensaje, r.ok), r.ok ? 200 : 400);
+  } catch (e) {
+    return c.html(paginaSimple('No se pudo conectar', (e as Error).message, false), 500);
+  }
 });
 
 app.all('*', (c) => c.json({ servicio: '4housing Apps (MCP)', version: VERSION, mcp: RECURSO }, 404));
