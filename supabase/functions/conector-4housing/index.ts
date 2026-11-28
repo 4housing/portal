@@ -13,6 +13,8 @@
 //     financiera de Gestión de Proyectos).
 //   · SharePoint (v4): escritura en Gerencia de Producción · 01 DISEÑO Y DESARROLLO
 //     como la persona (Microsoft Graph delegado), ver sharepoint.ts.
+//   · Modelos IFC (v5): buscar elementos, interferencias/contactos y congelar versión,
+//     sobre lo que carga ifc-procesador, ver ifc.ts.
 //
 // Deploy: verify_jwt = false (la validación del token la hace este código, para
 // poder responder el 401 con WWW-Authenticate que exige el estándar MCP).
@@ -29,6 +31,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.1
 import { gpNorm, resumenProyecto, type CtxGP } from './compras_gp.ts';
 import { financieroProyecto, type CtxFin } from './compras_fin.ts';
 import { registrarSharePoint, verificarParaLogin, procesarCallback, urlAutorizar } from './sharepoint.ts';
+import { registrarIFC } from './ifc.ts';
 
 const FUNCION = 'conector-4housing';
 const SUPABASE_URL = 'https://wcpkpwxhqdcdljfwzcmy.supabase.co';
@@ -36,7 +39,7 @@ const PUBLISHABLE_KEY = 'sb_publishable_08decRYdCRUdtO5zogvJVg_VEBCN9pf';
 const BASE_PUBLICA = `${SUPABASE_URL}/functions/v1/${FUNCION}`;
 const RECURSO = `${BASE_PUBLICA}/mcp`;
 const METADATA_URL = `${BASE_PUBLICA}/.well-known/oauth-protected-resource`;
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 const MS_CALLBACK = `${BASE_PUBLICA}/ms/callback`;
 const MAX_FILAS_ESCRITURA = 50;
 
@@ -367,6 +370,9 @@ function crearServidor(sb: SupabaseClient, usuario: { id: string; email: string 
 
   // ======================= SharePoint (Diseño) =========================
   registrarSharePoint(server, { sb, userId: usuario.id, email: usuario.email, basePublica: BASE_PUBLICA, texto, error });
+
+  // ======================= Modelos IFC (Diseño) =========================
+  registrarIFC(server, { sb, texto, error });
 
   return server;
 }
