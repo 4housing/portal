@@ -6,6 +6,7 @@ del portal desde Claude **con los permisos de cada usuario**.
 - **Login:** Supabase Auth como servidor OAuth 2.1. La aprobación la hace `portal/oauth/consent/`.
 - **Permisos:** cada consulta va con el token del usuario (nunca service key): aplica la RLS existente
   (`tiene_sector`, `puede_editar_sector`, `compras_flag`). Quien no tiene el sector no ve nada.
+- **Alcance (v5):** lo de v3 + SharePoint (v4) + modelos IFC (v5, `ifc.ts`).
 - **Alcance (v3):** todas las apps del portal, con los permisos de cada usuario: listar tablas, SQL de
   solo lectura, y altas/modificaciones/bajas con vista previa + confirmación. Más las herramientas de
   Compras (foto económica y financiera).
@@ -20,6 +21,10 @@ del portal desde Claude **con los permisos de cada usuario**.
 | `insertar` / `actualizar` / `eliminar` | Escritura con los permisos del usuario. Sin `confirmado=true` solo devuelve la vista previa. Filtros obligatorios para modificar/borrar; máximo 50 filas por vez. |
 | `sharepoint_conectar` | Link para conectar (una vez) la cuenta Microsoft de la persona. Debe ser la misma persona que la cuenta del portal. |
 | `sharepoint_listar` / `_crear_carpeta` / `_copiar` / `_guardar_archivo` / `_mover` | SharePoint de Gerencia de Producción, **solo dentro de `Documentos compartidos/01 DISEÑO Y DESARROLLO`**, como la persona (Graph delegado). Sin borrar, sin pisar archivos, vista previa + `confirmado=true`, solo editores de Diseño. Registro en `diseno_sharepoint_log`. |
+| `ifc_modelos` | Modelos IFC procesados (10-BIM y Estudio de proyecto): estado, versión vigente, congelada, cantidad de elementos. |
+| `ifc_buscar` | Elementos de un modelo con filtros (clase, familia/tipo de Revit, nivel, material, texto, parámetro) o conteos agrupados. |
+| `ifc_interferencias` | Cruces o contactos entre grupos de elementos (en un modelo o entre dos), con tolerancia en mm. **Aproximado por cajas envolventes.** |
+| `ifc_congelar` | Marca/desmarca la versión congelada (vista previa + `confirmado=true`; solo coordinación, lo valida la base). |
 
 ## Cálculo
 
