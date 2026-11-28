@@ -153,7 +153,7 @@ function dentroDeBase(item: any): boolean {
 // ---------------------------------------------------------------------------
 // Graph
 // ---------------------------------------------------------------------------
-class Graph {
+export class Graph {
   driveId = '';
   constructor(private token: string) {}
   async req(metodo: string, ruta: string, cuerpo?: unknown, extra?: Record<string, string>) {
@@ -179,6 +179,22 @@ class Graph {
     if (!dentroDeBase(r.data)) throw new Error('Fuera de "01 DISEÑO Y DESARROLLO": operación no permitida.');
     return r.data;
   }
+  /** Igual que item(), con el link de descarga temporal (@microsoft.graph.downloadUrl, ~1 h) y la versión (eTag). */
+  async itemConDescarga(ruta: string) {
+    const r = await this.req('GET', `/drives/${this.driveId}/root:/${enc(ruta)}`);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(r.data?.error?.message || ('Graph ' + r.status));
+    if (!dentroDeBase(r.data)) throw new Error('Fuera de "01 DISEÑO Y DESARROLLO": operación no permitida.');
+    return r.data;
+  }
+}
+
+/** Graph con la cuenta Microsoft conectada de la persona (null si no la conectó). Lanza error si venció. */
+export async function graphDe(userId: string): Promise<Graph | null> {
+  if (!msConfigurado()) throw new Error('La conexión con SharePoint todavía no está configurada en el servidor.');
+  const tok = await accessTokenDe(userId);
+  if (!tok) return null;
+  const g = new Graph(tok); await g.iniciar(); return g;
 }
 
 // ---------------------------------------------------------------------------

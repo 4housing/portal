@@ -24,6 +24,7 @@ del portal desde Claude **con los permisos de cada usuario**.
 | `ifc_modelos` | Modelos IFC procesados (10-BIM y Estudio de proyecto): estado, versión vigente, congelada, cantidad de elementos. |
 | `ifc_buscar` | Elementos de un modelo con filtros (clase, familia/tipo de Revit, nivel, material, texto, parámetro) o conteos agrupados. |
 | `ifc_interferencias` | Cruces o contactos entre grupos de elementos (en un modelo o entre dos), con tolerancia en mm. **Aproximado por cajas envolventes.** |
+| `ifc_procesar` | Procesa un .ifc puntual (10-BIM o Estudio de proyecto) con la cuenta Microsoft de la persona: registra la versión y lanza "Procesar IFC" en GitHub (secreto `GITHUB_IFC_TOKEN`, solo Actions de 4housing/ifc-procesador). Solo editores de Diseño. |
 | `ifc_congelar` | Marca/desmarca la versión congelada (vista previa + `confirmado=true`; solo coordinación, lo valida la base). |
 
 ## Cálculo
